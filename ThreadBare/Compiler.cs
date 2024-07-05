@@ -11,10 +11,12 @@ namespace ThreadBare
 {
     internal class Compiler : YarnSpinnerParserBaseListener
     {
-        string HeaderName = "script.h";
+        string HeaderName = "script.yarn.h";
         string ScriptNamespace = "ThreadBare";
         Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
+        HashSet<string> NodeNames = new HashSet<string>();
         private int labelCount = 0;
+        List<string> labels = new List<string>();
 
         public Node? CurrentNode { get; set; }
 
@@ -43,23 +45,57 @@ namespace ThreadBare
         /// <returns>The new label name.</returns>
         internal string RegisterLabel(string commentary = null)
         {
-            return "L" + this.labelCount++ + commentary;
+            var label = "L" + this.labelCount++ + commentary;
+            this.labels.Add(label);
+            return label;
         }
         public string Compile()
         {
             var sb = new StringBuilder();
+            sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
             sb.AppendLine($"""#include "{HeaderName}" """);
+            sb.AppendLine($"""#include "script.h" """);
+            sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
-            foreach (var node in Nodes.Values)
-            {
-                sb.AppendLine($"\tvoid {node.Name}(TBScriptRunner& runner);");
-            }
             foreach ( var node in Nodes.Values )
             {
                 sb.Append(node.Compile());
             }
             sb.AppendLine("}");
             return sb.ToString(); 
+        }
+        public string CompileHeader()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("""
+                #ifndef SCRIPT_YARN_H
+                #define SCRIPT_YARN_H
+                #include "threadbare.h"
+
+                namespace ThreadBare {
+                """);
+            foreach(var nodeName in NodeNames)
+            {
+                sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner);");
+            }
+            sb.AppendLine();
+            sb.Append("\tenum NodeLabel { nodestart = 0");
+            this.labels.ForEach(label => sb.Append($", {label}"));
+            sb.Append("};\n");
+            sb.Append("""
+                }
+                #endif
+                """);
+            return sb.ToString();
+        }
+        public void SaveNodeNames()
+        {
+            NodeNames.UnionWith(Nodes.Keys);
+        }
+        public void ClearNodes() 
+        {
+                SaveNodeNames();
+                Nodes.Clear();
         }
         /// <summary>
         /// we have found a new node set up the currentNode var ready to
@@ -181,7 +217,7 @@ namespace ThreadBare
         {
             var sb = new StringBuilder();
             sb.AppendLine($"\tvoid {Name}(TBScriptRunner& runner) {{");
-            sb.AppendLine("\t\tif(runner.nextStep != nullptr){goto *(runner.nextStep);}");
+            sb.AppendLine("\t\tswitch (runner.nextStep){case 0:");
 
             foreach (var step in Steps)
             {
@@ -189,6 +225,7 @@ namespace ThreadBare
             }
             // TODO: optimize away this end state if not needed
             sb.AppendLine("\t\trunner.Stop();");
+            sb.AppendLine("\t\t}");
             sb.AppendLine("\t}");
             sb.AppendLine("");
             return sb.ToString();
@@ -236,6 +273,7 @@ namespace ThreadBare
         }
         public string Compile(Node node)
         {
+            var label = node.compiler.RegisterLabel();
             var sb = new StringBuilder();
             sb.AppendLine($"\t\t// {lineID}");
             sb.AppendLine("\t\trunner.currentLine.StartNewLine();");
@@ -253,9 +291,9 @@ namespace ThreadBare
                 
 
             });
-            sb.AppendLine($"\t\trunner.FinishLine(&&after_{lineID});");
+            sb.AppendLine($"\t\trunner.FinishLine({label});");
             sb.AppendLine("\t\treturn;");
-            sb.AppendLine($"\t\tafter_{lineID}:{{}}"); // Extra brackets for safety, probably unneeded
+            sb.AppendLine($"\t\tcase {label}:");
             sb.AppendLine();
 
             return sb.ToString();
@@ -318,7 +356,7 @@ namespace ThreadBare
                     foreach(var split in splits)
                     {
                         if (split.Trim().Length == 0) { continue; }
-                        // Todo try and deal with numbers that should be string wrapped, variables, etc.
+                        // Todo deal with args that should be string wrapped, variables, fixedpoint numbers, etc.
                         args.Add(split.Trim());
                     }
                     
@@ -336,6 +374,14 @@ namespace ThreadBare
                 var sb = new StringBuilder();
                 sb.AppendLine("runner.Stop();");
                 sb.AppendLine("return;");
+                return sb.ToString();
+            } else if (commandName == "wait")
+            {
+                var waitContinueLabel = node.compiler.RegisterLabel("waitContinue");
+                var sb = new StringBuilder();
+                sb.AppendLine($"\t\trunner.StartTimer({args[0]}, {waitContinueLabel});");
+                sb.AppendLine("\t\treturn;");
+                sb.AppendLine($"\t\tcase {waitContinueLabel}:\n");
                 return sb.ToString();
             }
             var result = $"\t\t{commandName}({string.Join(", ", args)});\n\n";
@@ -371,7 +417,7 @@ namespace ThreadBare
         public string targetLabel = "";
         public string Compile(Node node)
         {
-            var result = $"\t\tgoto {targetLabel};\n";
+            var result = $"\t\trunner.ReturnAndGoto({targetLabel}); return;\n";
             return result;
         }
     }
@@ -380,7 +426,7 @@ namespace ThreadBare
         public string label = "";
         public string Compile(Node node)
         {
-            var result = $"\t\t{label}:{{}}\n";
+            var result = $"\t\tcase {label}:\n";
             return result;
         }
     }
@@ -414,12 +460,12 @@ namespace ThreadBare
         }
         public string Compile(Node node)
         {
-            var lineId = lineID ?? node.compiler.RegisterLabel("OptionLine");
+            var lineId = node.compiler.RegisterLabel($"OptionLine{lineID}");
 
             var sb = new StringBuilder();
             sb.AppendLine($"\t\t\t// {lineId}");
             sb.AppendLine("\t\t{");
-            sb.AppendLine($"\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>(&&{jumpToLabel});");
+            sb.AppendLine($"\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>({jumpToLabel});");
             if(condition != null)
             {
                 sb.AppendLine($"\t\t\tcurrentOption.condition = {condition};");

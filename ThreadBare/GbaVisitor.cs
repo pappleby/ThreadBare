@@ -239,8 +239,10 @@ namespace ThreadBare
 
             var finishClause = new GoTo { targetLabel = jumpLabel };
             this.compiler.CurrentNode?.AddStep(finishClause);
-
-            this.compiler.CurrentNode?.AddStep(new Label { label = endOfClauseLabel });
+            if (expression != null)
+            {
+                this.compiler.CurrentNode?.AddStep(new Label { label = endOfClauseLabel });
+            }
         }
 
         // for the shortcut options (-> line of text <<if expression>> indent
@@ -478,9 +480,15 @@ namespace ThreadBare
 
         public override int VisitValueNumber(YarnSpinnerParser.ValueNumberContext context)
         {
-            // may need to reevaluate non integer floats
             float number = float.Parse(context.NUMBER().GetText(), CultureInfo.InvariantCulture);
-            this.compiler.CurrentNode?.AddParameter(number.ToString());
+            var numberString = number.ToString();
+            if (numberString.Contains('.'))
+            {
+                this.compiler.CurrentNode?.AddParameter($"bn::fixed({numberString})");
+            } else
+            {
+                this.compiler.CurrentNode?.AddParameter(numberString);
+            }
             return 0;
         }
 
