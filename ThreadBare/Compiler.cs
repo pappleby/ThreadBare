@@ -15,8 +15,6 @@ namespace ThreadBare
         string ScriptNamespace = "ThreadBare";
         Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
         HashSet<string> NodeNames = new HashSet<string>();
-        private int labelCount = 0;
-        List<string> labels = new List<string>();
 
         public Node? CurrentNode { get; set; }
 
@@ -37,22 +35,11 @@ namespace ThreadBare
 
             return null;
         }
-        /// <summary>
-        /// Generates a unique label name to use in the program.
-        /// </summary>
-        /// <param name="commentary">Any additional text to append to the
-        /// end of the label.</param>
-        /// <returns>The new label name.</returns>
-        internal string RegisterLabel(string commentary = null)
-        {
-            var label = "L" + this.labelCount++ + commentary;
-            this.labels.Add(label);
-            return label;
-        }
+
         public string Compile()
         {
             var sb = new StringBuilder();
-            sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
+            // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
             sb.AppendLine($"""#include "{HeaderName}" """);
             sb.AppendLine($"""#include "script.h" """);
             sb.AppendLine("#include <bn_fixed.h>");
@@ -78,10 +65,7 @@ namespace ThreadBare
             {
                 sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner);");
             }
-            sb.AppendLine();
-            sb.Append("\tenum NodeLabel { nodestart = 0");
-            this.labels.ForEach(label => sb.Append($", {label}"));
-            sb.Append("};\n");
+
             sb.Append("""
                 }
                 #endif
@@ -191,6 +175,20 @@ namespace ThreadBare
         public string Name = "node";
         List<Step> Steps = new List<Step>();
         public Stack<string> parameters = new Stack<string>();
+        private int labelCount = 1;
+        List<string> labels = new List<string>();
+        /// <summary>
+        /// Generates a unique label name to use in the program.
+        /// </summary>
+        /// <param name="commentary">Any additional text to append to the
+        /// end of the label.</param>
+        /// <returns>The new label name.</returns>
+        internal string RegisterLabel(string commentary = "")
+        {
+            var label = "L" + this.labelCount++ + commentary;
+            this.labels.Add(label);
+            return label;
+        }
         public void AddParameter(string p) { 
             parameters.Push(p);
         }
@@ -216,15 +214,28 @@ namespace ThreadBare
         public string Compile()
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"\tvoid {Name}(TBScriptRunner& runner) {{");
-            sb.AppendLine("\t\tswitch (runner.nextStep){case 0:");
+            sb.AppendLine($"\tvoid {Name}(TBScriptRunner& runner)\n\t{{");
+
+            var sbSteps = new StringBuilder();
+            sbSteps.AppendLine("\t\tswitch (runner.nextStep)");
+            sbSteps.AppendLine("\t\t{");
+            sbSteps.AppendLine("\t\tcase nodestart:");
 
             foreach (var step in Steps)
             {
-                sb.Append(step.Compile(this));
+                sbSteps.Append(step.Compile(this));
             }
-            // TODO: optimize away this end state if not needed
-            sb.AppendLine("\t\trunner.Stop();");
+
+            sb.Append("\t\tenum NodeLabel { nodestart = 0");
+            this.labels.ForEach(label => sb.Append($", {label}"));
+            sb.Append("};\n");
+
+            sb.Append(sbSteps.ToString());
+            
+            sb.AppendLine("\t\t\trunner.Stop();");
+            sb.AppendLine("\t\tdefault:");
+            sb.AppendLine("\t\t\t//todo, throw error: invalid node step");
+            sb.AppendLine("\t\t\tbreak;");
             sb.AppendLine("\t\t}");
             sb.AppendLine("\t}");
             sb.AppendLine("");
@@ -241,8 +252,8 @@ namespace ThreadBare
         public string Compile(Node node)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"\t\trunner.Jump(&{Target});");
-            sb.AppendLine("\t\treturn;");
+            sb.AppendLine($"\t\t\t\trunner.Jump(&{Target});");
+            sb.AppendLine("\t\t\t\treturn;");
             return sb.ToString();
         }
     }
@@ -273,26 +284,26 @@ namespace ThreadBare
         }
         public string Compile(Node node)
         {
-            var label = node.compiler.RegisterLabel();
+            var label = node.RegisterLabel();
             var sb = new StringBuilder();
-            sb.AppendLine($"\t\t// {lineID}");
-            sb.AppendLine("\t\trunner.currentLine.StartNewLine();");
+            sb.AppendLine($"\t\t\t// {lineID}");
+            sb.AppendLine("\t\t\trunner.currentLine.StartNewLine();");
             expressions.ForEach(expression =>
             {
                 if (expression is TextExpression)
                 {
                     var text = ((TextExpression)expression).text;
                     var trimmedExpression = text.ReplaceLineEndings("").Replace("\"", "\\\"");
-                    sb.AppendLine($"\t\trunner.currentLine << \"{trimmedExpression}\";");
+                    sb.AppendLine($"\t\t\trunner.currentLine << \"{trimmedExpression}\";");
                 } else if (expression is CalculatedExpression) {
                     var text = ((CalculatedExpression)expression).text;
-                    sb.AppendLine($"\t\trunner.currentLine << {text};");
+                    sb.AppendLine($"\t\t\trunner.currentLine << {text};");
                 }
                 
 
             });
-            sb.AppendLine($"\t\trunner.FinishLine({label});");
-            sb.AppendLine("\t\treturn;");
+            sb.AppendLine($"\t\t\trunner.FinishLine({label});");
+            sb.AppendLine("\t\t\treturn;");
             sb.AppendLine($"\t\tcase {label}:");
             sb.AppendLine();
 
@@ -377,14 +388,14 @@ namespace ThreadBare
                 return sb.ToString();
             } else if (commandName == "wait")
             {
-                var waitContinueLabel = node.compiler.RegisterLabel("waitContinue");
+                var waitContinueLabel = node.RegisterLabel("waitContinue");
                 var sb = new StringBuilder();
-                sb.AppendLine($"\t\trunner.StartTimer({args[0]}, {waitContinueLabel});");
-                sb.AppendLine("\t\treturn;");
+                sb.AppendLine($"\t\t\trunner.StartTimer({args[0]}, {waitContinueLabel});");
+                sb.AppendLine("\t\t\treturn;");
                 sb.AppendLine($"\t\tcase {waitContinueLabel}:\n");
                 return sb.ToString();
             }
-            var result = $"\t\t{commandName}({string.Join(", ", args)});\n\n";
+            var result = $"\t\t\t{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
     }
@@ -397,7 +408,7 @@ namespace ThreadBare
         public string expression = "6";
         public string Compile(Node node)
         {
-            var result = $"\t\trunner.variables.{variable} {operation} {expression};\n\n";
+            var result = $"\t\t\trunner.variables.{variable} {operation} {expression};\n\n";
             return result;
         }
     }
@@ -408,7 +419,7 @@ namespace ThreadBare
         
         public string Compile(Node node)
         {
-            var result = $"\t\tif(!({expression})){{\n\t\t\tgoto {jumpIfFalseLabel}; }}\n"; 
+            var result = $"\t\t\tif(!({expression})){{\n\t\t\t\trunner.ReturnAndGoto({jumpIfFalseLabel}); }}\n"; 
             return result;
         }
     }
@@ -417,7 +428,7 @@ namespace ThreadBare
         public string targetLabel = "";
         public string Compile(Node node)
         {
-            var result = $"\t\trunner.ReturnAndGoto({targetLabel}); return;\n";
+            var result = $"\t\t\trunner.ReturnAndGoto({targetLabel}); return;\n";
             return result;
         }
     }
@@ -460,15 +471,15 @@ namespace ThreadBare
         }
         public string Compile(Node node)
         {
-            var lineId = node.compiler.RegisterLabel($"OptionLine{lineID}");
+            var lineId = node.RegisterLabel($"OptionLine{lineID}");
 
             var sb = new StringBuilder();
             sb.AppendLine($"\t\t\t// {lineId}");
-            sb.AppendLine("\t\t{");
-            sb.AppendLine($"\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>({jumpToLabel});");
+            sb.AppendLine("\t\t\t{");
+            sb.AppendLine($"\t\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>({jumpToLabel});");
             if(condition != null)
             {
-                sb.AppendLine($"\t\t\tcurrentOption.condition = {condition};");
+                sb.AppendLine($"\t\t\t\tcurrentOption.condition = {condition};");
             }
             expressions.ForEach(expression =>
             {
@@ -476,15 +487,15 @@ namespace ThreadBare
                 {
                     var text = ((TextExpression)expression).text;
                     var trimmedExpression = text.ReplaceLineEndings("").Replace("\"", "\\\"");
-                    sb.AppendLine($"\t\t\tcurrentOption << \"{trimmedExpression}\";");
+                    sb.AppendLine($"\t\t\t\tcurrentOption << \"{trimmedExpression}\";");
                 }
                 else if (expression is CalculatedExpression)
                 {
                     var text = ((CalculatedExpression)expression).text;
-                    sb.AppendLine($"\t\t\tcurrentOption << {text};");
+                    sb.AppendLine($"\t\t\t\tcurrentOption << {text};");
                 }
-            sb.AppendLine($"\t\t\trunner.options.push_back(currentOption);");
-            sb.AppendLine("\t\t}");
+            sb.AppendLine($"\t\t\t\trunner.options.push_back(currentOption);");
+            sb.AppendLine("\t\t\t}");
 
             });
             
@@ -497,14 +508,14 @@ namespace ThreadBare
     internal class StartOptions: Step
     {
         public string Compile(Node node) {
-            return "\t\t\n\t\trunner.options.clear();\n";
+            return "\n\t\t\trunner.options.clear();\n";
         }
     }
     internal class SendOptions : Step
     {
         public string Compile(Node node)
         {
-            return "\t\trunner.state = Options;\n\t\treturn;\n\n";
+            return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
         }
     }
 }

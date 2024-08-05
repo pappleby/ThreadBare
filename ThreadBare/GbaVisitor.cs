@@ -187,7 +187,7 @@ namespace ThreadBare
         {
 
             //// label to give us a jump point for when the if finishes
-            var endOfIfStatementLabel = this.compiler.RegisterLabel();
+            var endOfIfStatementLabel = this.compiler.CurrentNode?.RegisterLabel() ?? "";
 
             //// handle the if
             var ifClause = context.if_clause();
@@ -213,7 +213,7 @@ namespace ThreadBare
         private void GenerateClause(string jumpLabel, ParserRuleContext clauseContext, YarnSpinnerParser.StatementContext[] children, YarnSpinnerParser.ExpressionContext expression)
         {
 
-            string endOfClauseLabel = this.compiler.RegisterLabel("skipclause");
+            string endOfClauseLabel = this.compiler.CurrentNode?.RegisterLabel("skipclause") ?? "";
 
             // handling the expression (if it has one) will only be called on
             // ifs and elseifs
@@ -249,7 +249,7 @@ namespace ThreadBare
         // statements dedent)+
         public override int VisitShortcut_option_statement(YarnSpinnerParser.Shortcut_option_statementContext context)
         {
-            string endOfGroupLabel = this.compiler.RegisterLabel("group_end");
+            string endOfGroupLabel = this.compiler.CurrentNode?.RegisterLabel("group_end") ?? "";
 
             var labels = new List<string>();
 
@@ -270,7 +270,7 @@ namespace ThreadBare
 
                 // Generate the name of internal label that we'll jump to if
                 // this option is selected. We'll emit the label itself later.
-                string optionDestinationLabel = this.compiler.RegisterLabel($"shortcutoption_{this.compiler.CurrentNode.Name ?? "node"}_{optionCount + 1}");
+                string optionDestinationLabel = this.compiler.CurrentNode?.RegisterLabel($"shortcutoption_{this.compiler.CurrentNode.Name ?? "node"}_{optionCount + 1}") ?? "";
                 labels.Add(optionDestinationLabel);
                 optionStep.jumpToLabel = optionDestinationLabel;
 
@@ -295,7 +295,7 @@ namespace ThreadBare
 
                 // Get the line ID from the hashtags if it has one
                 var lineIDTag = Compiler.GetLineIDTag(shortcut.line_statement().hashtag());
-                string lineID = lineIDTag?.text?.Text ?? this.compiler.RegisterLabel("OptionLine");
+                string lineID = lineIDTag?.text?.Text ?? this.compiler.CurrentNode?.RegisterLabel("OptionLine") ?? "";
 
                 if (lineIDTag != null)
                 {
