@@ -419,7 +419,7 @@ namespace ThreadBare
         
         public string Compile(Node node)
         {
-            var result = $"\t\t\tif(!({expression})){{\n\t\t\t\trunner.ReturnAndGoto({jumpIfFalseLabel}); }}\n"; 
+            var result = $"\t\t\tif(!({expression})){{\n\t\t\t\trunner.ReturnAndGoto({jumpIfFalseLabel});\n\t\t\t\treturn; }}\n"; 
             return result;
         }
     }
