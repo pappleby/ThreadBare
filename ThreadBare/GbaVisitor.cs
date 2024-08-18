@@ -85,6 +85,15 @@ namespace ThreadBare
             return 0;
         }
 
+        public override int VisitHashtag([NotNull] YarnSpinnerParser.HashtagContext context)
+        {
+            var tagText = context.HASHTAG_TEXT().GetText();
+            var currentLine = this.compiler.CurrentNode?.GetCurrentLine() as Line;
+            currentLine?.AddTag(this.compiler, tagText);
+            return 0;
+        }
+
+
         // A set command: explicitly setting a value to an expression <<set $foo
         // to 1>>
         public override int VisitSet_statement([NotNull] YarnSpinnerParser.Set_statementContext context)

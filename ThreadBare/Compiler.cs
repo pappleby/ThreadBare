@@ -13,9 +13,13 @@ namespace ThreadBare
     {
         string HeaderName = "script.yarn.h";
         string ScriptNamespace = "ThreadBare";
+        
         Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
         HashSet<string> NodeNames = new HashSet<string>();
-
+        public HashSet<string> NodeTags = new HashSet<string>();
+        public HashSet<string> LineTags = new HashSet<string>();
+        public HashSet<string> OptionTags = new HashSet<string>();
+        public HashSet<string> CommandTags = new HashSet<string>();
         public Node? CurrentNode { get; set; }
 
         internal static YarnSpinnerParser.HashtagContext? GetLineIDTag(YarnSpinnerParser.HashtagContext[] hashtagContexts)
@@ -173,6 +177,7 @@ namespace ThreadBare
         }
         public Compiler compiler;
         public string Name = "node";
+        List<Tag> tags = new List<Tag>();
         List<Step> Steps = new List<Step>();
         public Stack<string> parameters = new Stack<string>();
         private int labelCount = 1;
@@ -210,6 +215,12 @@ namespace ThreadBare
         public void AddStep(Step step)
         {
             Steps.Add(step);
+        }
+        public void AddTag(Compiler compiler, string text)
+        {
+            var tag = new Tag(TagLocation.Node, text);
+            this.tags.Add(tag);
+            compiler.NodeTags.Add(tag.Name);
         }
         public string Compile()
         {
@@ -262,6 +273,7 @@ namespace ThreadBare
         public string lineID = "line#";
         public string? condition;
         
+        List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
         public void AddTextExpression(string textExpression)
         {
@@ -281,6 +293,12 @@ namespace ThreadBare
             var te = expressions.LastOrDefault() as TextExpression;
             if (te != null && te.text.EndsWith('{')) { te.text = te.text.Remove(te.text.Length -1, 1); }
             this.expressions.Add(new CalculatedExpression { text = expression });
+        }
+        public void AddTag(Compiler compiler, string text)
+        {
+            var tag = new Tag(TagLocation.Line, text);
+            this.tags.Add(tag);
+            compiler.LineTags.Add(tag.Name);
         }
         public string Compile(Node node)
         {
@@ -316,6 +334,9 @@ namespace ThreadBare
     {
         public void AddCalculatedExpression(string expression);
         public void AddTextExpression(string textExpression);
+        public void AddTag(Compiler compiler, string text);
+
+
     }
     internal class Expression {}
     internal class TextExpression : Expression { 
@@ -327,6 +348,7 @@ namespace ThreadBare
     }
     internal class Command : Step, IExpressionDestination
     {
+        List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
         public void AddTextExpression(string textExpression)
         {
@@ -398,6 +420,12 @@ namespace ThreadBare
             var result = $"\t\t\t{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
+        public void AddTag(Compiler compiler, string text)
+        {
+            var tag = new Tag(TagLocation.Command, text);
+            this.tags.Add(tag);
+            compiler.CommandTags.Add(tag.Name);
+        }
     }
     
     internal class Set : Step
@@ -448,6 +476,7 @@ namespace ThreadBare
         public string jumpToLabel = "";
         public string? condition;
 
+        List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
         public void AddTextExpression(string textExpression)
         {
@@ -504,6 +533,12 @@ namespace ThreadBare
             return sb.ToString();
 
         }
+        public void AddTag(Compiler compiler, string text)
+        {
+            var tag = new Tag(TagLocation.Option, text);
+            this.tags.Add(tag);
+            compiler.OptionTags.Add(tag.Name);
+        }
     }
     internal class StartOptions: Step
     {
@@ -517,5 +552,28 @@ namespace ThreadBare
         {
             return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
         }
+    }
+
+    public enum TagLocation { Node, Line, Option, Command };
+    internal class Tag
+    {
+        public TagLocation Location { get; }
+        public string Name { get; }
+        public string? Value { get; }
+        public Tag(TagLocation location, string text)
+        {
+            this.Location = location;
+            if (!text.Contains(':')){
+                this.Name = text;
+                return;
+            }
+            var split = text.Split(':');
+            if (split.Length != 2) {
+                throw new Exception($"Malformed Tag {text}");
+            }
+            this.Name = split[0];
+            this.Value = split[1];
+        }
+
     }
 }
