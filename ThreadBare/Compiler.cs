@@ -245,8 +245,9 @@ namespace ThreadBare
             {
                 sbSteps.Append(step.Compile(this));
             }
-
-            sb.AppendLine("\t\tauto currentLine = runner.currentLine;");
+            if (Steps.OfType<Line>().Any()) { 
+                sb.AppendLine("\t\tauto& currentLine = runner.currentLine;");
+            }
             sb.Append("\t\tenum NodeLabel { nodestart = 0");
             this.labels.ForEach(label => sb.Append($", {label}"));
             sb.Append("};\n");
@@ -315,17 +316,17 @@ namespace ThreadBare
             var label = node.RegisterLabel();
             var sb = new StringBuilder();
             sb.AppendLine($"\t\t\t// {lineID}");
-            sb.AppendLine("\t\t\trunner.currentLine.StartNewLine();");
+            sb.AppendLine("\t\t\tcurrentLine.StartNewLine();");
             expressions.ForEach(expression =>
             {
                 if (expression is TextExpression)
                 {
                     var text = ((TextExpression)expression).text;
                     var trimmedExpression = text.ReplaceLineEndings("").Replace("\"", "\\\"");
-                    sb.AppendLine($"\t\t\trunner.currentLine << \"{trimmedExpression}\";");
+                    sb.AppendLine($"\t\t\tcurrentLine << \"{trimmedExpression}\";");
                 } else if (expression is CalculatedExpression) {
                     var text = ((CalculatedExpression)expression).text;
-                    sb.AppendLine($"\t\t\trunner.currentLine << {text};");
+                    sb.AppendLine($"\t\t\tcurrentLine << {text};");
                 }
                 
 
@@ -333,12 +334,16 @@ namespace ThreadBare
             if (tags.Any())
             {
                 var enumPrefixedTags = String.Join(", ", tags.Select(t => $"LineTag::{t.Name}"));
-                sb.AppendLine($"\t\t\tfor(int p : {{{enumPrefixedTags}}}) {{ runner.currentLine.markup.tags.emplace_back(p);}}");
+                sb.AppendLine($"\t\t\tfor(int p : {{{enumPrefixedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
                     var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
-                    sb.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ runner.currentLine.markup.tagParams.emplace_back(p);}}");
+                    sb.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ currentLine.markup.tagParams.emplace_back(p);}}");
                 }
+            }
+            if (!string.IsNullOrWhiteSpace(condition))
+            {
+                sb.AppendLine($"\t\t\tcurrentLine.condition = {condition};");
             }
             sb.AppendLine($"\t\t\trunner.FinishLine({label});");
             sb.AppendLine("\t\t\treturn;");

@@ -76,12 +76,21 @@ namespace ThreadBare
             {
                 lineID = lineIDTag.text.Text;
             }
-
             var outputLine = new Line { lineID = lineID };
+            var cn = this.compiler.CurrentNode;
+
             // This should be split up into individual expressions, but good enough to start
             this.compiler.CurrentNode?.AddStep(outputLine);
             var expressionCount = this.GenerateCodeForExpressionsInFormattedText(context.line_formatted_text().children);
             base.VisitLine_statement(context);
+            if (context.line_condition()?.expression() != null)
+            {
+                // Evaluate the condition, and leave it on the stack
+                this.Visit(context.line_condition()?.expression());
+
+                outputLine.condition = cn?.parameters?.Pop();
+            }
+            cn?.FlushParamaters();
             return 0;
         }
 

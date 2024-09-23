@@ -81,6 +81,15 @@ namespace ThreadBare
                 title: Start
                 tags: ntest ntestval:value
                 ---
+                <<declare $loop = 0>>
+                <<declare $stoop = 0>>
+
+                TestLine {$stoop} with condition <<if $loop > 10>>
+
+                TestLine2 {$loop} hmmmm
+                TestLine2 {$stoop} woow
+
+
                 tagtest #test #test2:value #tag3:7
                 ...Hmmm? You can't remember all that?
                 <<command>>
