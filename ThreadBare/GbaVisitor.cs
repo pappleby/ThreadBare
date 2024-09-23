@@ -81,7 +81,7 @@ namespace ThreadBare
             // This should be split up into individual expressions, but good enough to start
             this.compiler.CurrentNode?.AddStep(outputLine);
             var expressionCount = this.GenerateCodeForExpressionsInFormattedText(context.line_formatted_text().children);
-
+            base.VisitLine_statement(context);
             return 0;
         }
 
@@ -159,8 +159,9 @@ namespace ThreadBare
                     c.AddCalculatedExpression(expression);
                 }
             }
-
+            
             cn?.AddStep(c);
+            
             return 0;
         }
 
@@ -295,7 +296,12 @@ namespace ThreadBare
                     optionStep.condition = cn?.parameters?.Pop();
                     cn?.FlushParamaters();
                 }
-
+                foreach (var hashtag in shortcut.line_statement()?.hashtag() ?? [])
+                {
+                    var tag = hashtag.HASHTAG_TEXT().GetText();
+                    optionStep.AddTag(this.compiler, tag);
+                }
+                
                 // We can now prepare and add the option.
 
                 // Start by figuring out the text that we want to add. This will

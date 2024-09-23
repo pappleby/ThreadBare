@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using Yarn;
@@ -19,7 +20,6 @@ namespace ThreadBare
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
-        public HashSet<string> CommandTags = new HashSet<string>();
         public Node? CurrentNode { get; set; }
 
         internal static YarnSpinnerParser.HashtagContext? GetLineIDTag(YarnSpinnerParser.HashtagContext[] hashtagContexts)
@@ -48,6 +48,9 @@ namespace ThreadBare
             sb.AppendLine($"""#include "script.h" """);
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
+            sb.AppendLine($"// Node Tags: {string.Join(", ", NodeTags)}");
+            sb.AppendLine($"// Line Tags: {string.Join(", ", LineTags)}");
+            sb.AppendLine($"// Option Tags: {string.Join(", ", OptionTags)}");
             foreach ( var node in Nodes.Values )
             {
                 sb.Append(node.Compile());
@@ -65,10 +68,14 @@ namespace ThreadBare
 
                 namespace ThreadBare {
                 """);
-            foreach(var nodeName in NodeNames)
+            sb.AppendLine($"\t// Nodes:");
+            foreach (var nodeName in NodeNames)
             {
                 sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner);");
             }
+            sb.AppendLine("\n\t// tags:");
+            var joinedTags = String.Join(", ", LineTags);
+            sb.AppendLine($"\tenum LineTag : int {{ {joinedTags} }};");    
 
             sb.Append("""
                 }
@@ -133,8 +140,10 @@ namespace ThreadBare
             {
                 // Split the list of tags by spaces, and use that
                 var tags = headerValue.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-
-                // this.CurrentNode.Tags.Add(tags);
+                foreach (var tag in tags)
+                {
+                    this.CurrentNode?.AddTag(tag);
+                }
 
                 //if (this.CurrentNode.Tags.Contains("rawText"))
                 //{
@@ -216,11 +225,11 @@ namespace ThreadBare
         {
             Steps.Add(step);
         }
-        public void AddTag(Compiler compiler, string text)
+        public void AddTag(string text)
         {
             var tag = new Tag(TagLocation.Node, text);
             this.tags.Add(tag);
-            compiler.NodeTags.Add(tag.Name);
+            this.compiler.NodeTags.Add(tag.Name);
         }
         public string Compile()
         {
@@ -237,6 +246,7 @@ namespace ThreadBare
                 sbSteps.Append(step.Compile(this));
             }
 
+            sb.AppendLine("\t\tauto currentLine = runner.currentLine;");
             sb.Append("\t\tenum NodeLabel { nodestart = 0");
             this.labels.ForEach(label => sb.Append($", {label}"));
             sb.Append("};\n");
@@ -320,6 +330,16 @@ namespace ThreadBare
                 
 
             });
+            if (tags.Any())
+            {
+                var enumPrefixedTags = String.Join(", ", tags.Select(t => $"LineTag::{t.Name}"));
+                sb.AppendLine($"\t\t\tfor(int p : {{{enumPrefixedTags}}}) {{ runner.currentLine.markup.tags.emplace_back(p);}}");
+                if (tags.Any(t => t.Params.Any()))
+                {
+                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    sb.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ runner.currentLine.markup.tagParams.emplace_back(p);}}");
+                }
+            }
             sb.AppendLine($"\t\t\trunner.FinishLine({label});");
             sb.AppendLine("\t\t\treturn;");
             sb.AppendLine($"\t\tcase {label}:");
@@ -348,7 +368,6 @@ namespace ThreadBare
     }
     internal class Command : Step, IExpressionDestination
     {
-        List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
         public void AddTextExpression(string textExpression)
         {
@@ -422,9 +441,7 @@ namespace ThreadBare
         }
         public void AddTag(Compiler compiler, string text)
         {
-            var tag = new Tag(TagLocation.Command, text);
-            this.tags.Add(tag);
-            compiler.CommandTags.Add(tag.Name);
+            throw new InvalidDataException("Commands can't have tags");
         }
     }
     
@@ -559,21 +576,35 @@ namespace ThreadBare
     {
         public TagLocation Location { get; }
         public string Name { get; }
-        public string? Value { get; }
+        public IEnumerable<string> Params { get; }
         public Tag(TagLocation location, string text)
         {
             this.Location = location;
-            if (!text.Contains(':')){
-                this.Name = text;
-                return;
-            }
-            var split = text.Split(':');
-            if (split.Length != 2) {
-                throw new Exception($"Malformed Tag {text}");
-            }
-            this.Name = split[0];
-            this.Value = split[1];
+
+
+            RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture;
+            Regex regex = new Regex(@"^(#?(?<tagname>([a-z]+[a-z,\d])))($|\s|:(?<tagparams>([a-z,\d,:])*))\s*$", options);
+
+            var parsedTag = regex.Matches(text)[0];
+            this.Name = parsedTag.Groups["tagname"].Value;
+            this.Params = parsedTag.Groups["tagparams"]
+                ?.Value
+                ?.Split(',')
+                ?.Where(p=> !string.IsNullOrWhiteSpace(p))
+                ?.Select(p =>
+                {
+                    if (p.Contains(':'))
+                    {
+                        return $"(int){p}";
+                    }
+                    else if (!int.TryParse(p, out _))
+                    {
+                        return $"\"{p}\"";
+                    }
+                    return p;
+                }) ?? Enumerable.Empty<string>(); ;
         }
+        
 
     }
 }
