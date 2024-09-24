@@ -57,8 +57,11 @@ namespace ThreadBare
                 compiler.ClearNodes();
                 File.WriteAllText(Path.Combine(cppDir.FullName, ysFile.Name + ".cpp"), compiledCpp);
             }
-            var compiledHeader = compiler.CompileHeader();
+            var compiledConstsHeader = compiler.CompileConstsHeader();
+            File.WriteAllText(Path.Combine(hDir.FullName, "consts.yarn.h"), compiledConstsHeader);
+            var compiledHeader = compiler.CompileScriptHeader();
             File.WriteAllText(Path.Combine(hDir.FullName, "script.yarn.h"), compiledHeader);
+
         }
 
         static string CompileFile(Compiler compiler, FileInfo file)

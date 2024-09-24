@@ -20,6 +20,7 @@ namespace ThreadBare
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
+        public int LineOrOptionTagParamCount = 0;
         public Node? CurrentNode { get; set; }
 
         internal static YarnSpinnerParser.HashtagContext? GetLineIDTag(YarnSpinnerParser.HashtagContext[] hashtagContexts)
@@ -58,7 +59,26 @@ namespace ThreadBare
             sb.AppendLine("}");
             return sb.ToString(); 
         }
-        public string CompileHeader()
+        public string CompileConstsHeader()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("""
+                #ifndef CONSTS_YARN_H
+                #define CONSTS_YARN_H
+
+                namespace ThreadBare {
+                """);
+
+            sb.AppendLine($"constexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
+            sb.AppendLine($"constexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
+
+            sb.Append("""
+                }
+                #endif
+                """);
+            return sb.ToString();
+        }
+        public string CompileScriptHeader()
         {
             var sb = new StringBuilder();
             sb.AppendLine("""
@@ -310,6 +330,7 @@ namespace ThreadBare
             var tag = new Tag(TagLocation.Line, text);
             this.tags.Add(tag);
             compiler.LineTags.Add(tag.Name);
+            compiler.LineOrOptionTagParamCount = Math.Max(compiler.LineOrOptionTagParamCount, tag.Params.Count());
         }
         public string Compile(Node node)
         {
@@ -560,6 +581,7 @@ namespace ThreadBare
             var tag = new Tag(TagLocation.Option, text);
             this.tags.Add(tag);
             compiler.OptionTags.Add(tag.Name);
+            compiler.LineOrOptionTagParamCount = Math.Max(compiler.LineOrOptionTagParamCount, tag.Params.Count());
         }
     }
     internal class StartOptions: Step
@@ -607,7 +629,7 @@ namespace ThreadBare
                         return $"\"{p}\"";
                     }
                     return p;
-                }) ?? Enumerable.Empty<string>(); ;
+                }) ?? Enumerable.Empty<string>();
         }
         
 
