@@ -338,7 +338,11 @@ namespace ThreadBare
             var sb = new StringBuilder();
             sb.AppendLine($"\t\t\t// {lineID}");
             sb.AppendLine("\t\t\tcurrentLine.StartNewLine();");
-            expressions.ForEach(expression =>
+
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions);
+
+
+            expressionsWithMarkup.ForEach(expression =>
             {
                 if (expression is TextExpression)
                 {
@@ -348,6 +352,10 @@ namespace ThreadBare
                 } else if (expression is CalculatedExpression) {
                     var text = ((CalculatedExpression)expression).text;
                     sb.AppendLine($"\t\t\tcurrentLine << {text};");
+                } else if (expression is Markup)
+                {
+                    var markup = (Markup)expression;
+                    sb.AppendLine($"// Markup: {(markup.isStart?"":"close: ")}{markup.name} Parameter names = {String.Join(", ", markup.parameterNames)} Parameter values = {String.Join(", ", markup.parameters)}");
                 }
                 
 
@@ -381,8 +389,6 @@ namespace ThreadBare
         public void AddCalculatedExpression(string expression);
         public void AddTextExpression(string textExpression);
         public void AddTag(Compiler compiler, string text);
-
-
     }
     internal class Expression {}
     internal class TextExpression : Expression { 
@@ -392,17 +398,139 @@ namespace ThreadBare
     {
         public string text = "";
     }
+    internal class Markup : Expression
+    {
+        public string name = "";
+        public bool isStart = true;
+        public List<string> parameters = new List<string>();
+        // might be cleaner to have one list of key value pairs, then could export them in a consistant order
+        public List<string> parameterNames = new List<string>();
+
+        public Markup() { }
+        public static List<Expression> ExtractMarkup(List<Expression> expressions)
+        {
+            var result = new List<Expression>();
+            var activeMarkups = new List<string>();
+
+            Markup? currentMarkup = null;
+            var isNoMarkupMode = false;
+            foreach(var sourceExpression in expressions)
+            {
+                if(sourceExpression is CalculatedExpression) { 
+                    var c = (CalculatedExpression)sourceExpression;
+                    if(currentMarkup!=null) { currentMarkup.parameters.Add(c.text); }
+                    else { result.Add(sourceExpression); }
+                    continue;
+                }
+                
+                var textExpression = sourceExpression as TextExpression;
+                if (textExpression == null) { throw new Exception("Unexpected expression type in markup parser."); }
+                var currentText = textExpression.text;
+                // iterate through text, gobbling up the next chunk as appropriate 
+                while (currentText.Any())
+                {
+                    if(isNoMarkupMode)
+                    {
+                        var closePosition = currentText.IndexOf("[/nomarkup]");
+                        if(closePosition == -1)
+                        {
+                            result.Add(new TextExpression { text = currentText });
+                            break;
+                        } else
+                        {
+                            isNoMarkupMode = false;
+                            result.Add(new TextExpression { text = currentText.Substring(0, closePosition) });
+                            currentText = currentText.Substring(closePosition + "[/nomarkup]".Length);
+                            continue;
+                        }
+                    }
+                    if(currentMarkup != null)
+                    {
+                        currentText = currentText.TrimStart();
+                        // Case 1: Handle end of markup
+                        if (currentText.StartsWith("/]"))
+                        {
+                            result.Add(currentMarkup);
+                            currentMarkup = null;
+                            currentText = currentText.Substring("/]".Length);
+                            continue;
+                        }
+                        if(currentText.StartsWith("]"))
+                        {
+                            result.Add(currentMarkup);
+                            activeMarkups.Add(currentMarkup.name);
+                            currentMarkup = null;
+                            currentText = currentText.Substring("]".Length);
+                            continue;
+                        }
+
+                        // Case 2: Handle parameter name
+                        var paramName = Regex.Match(currentText, @"([^]|\s|=])+");
+                        currentMarkup.parameterNames.Add(paramName.Value);
+                        currentText = currentText.Substring(paramName.Value.Length);
+                        // Case 2.5: Handle parameter value, if any
+                        if (currentText.StartsWith('='))
+                        {
+                            if(currentText.Length == 1) { 
+                                // the value is a calculated expression, so it'll get adding in the next expression iteration
+                                break; 
+                            }
+                            var paramValue = Regex.Match(currentText, @"=([^]|\s|=]+)").Groups[1].Value;
+                            currentMarkup.parameters.Add(paramValue);
+                            currentText = currentText.Substring(1 + paramValue.Length);
+                            continue;
+                        }
+                        continue;    
+                    }
+                    // No current markup, so search in string to find the next one, if any
+                    var match = Regex.Match(currentText, @"(?<!/)(?://)*(\[[/]?\w*)");
+                    if(!match.Success) { result.Add(new TextExpression { text = currentText }); break; }
+                    
+                    result.Add(new TextExpression { text = currentText.Substring(0, match.Index) });
+                    currentText = currentText.Substring(match.Index + 1);
+                    // This is a closing block
+                    if (currentText.StartsWith('/'))
+                    {
+                        var closingName = match.Value.Substring("[/".Length);
+                        // Close All
+                        if (closingName.Length==0)
+                        {
+                            foreach(var markupToClose in activeMarkups)
+                            {
+                                result.Add(new Markup { isStart=false, name=markupToClose });
+                            }
+                            activeMarkups.Clear();
+                            currentText = currentText.Substring("/]".Length);
+                            continue;
+                        }
+                        
+                        result.Add(new Markup { isStart = false, name= closingName });
+                        activeMarkups.Remove(closingName);
+                        currentText = currentText.Substring(closingName.Length + 2);
+                        continue;
+                    }
+                    // We're starting a brand new markup
+                    var name = match.Value.Substring(1);
+                    currentMarkup = new Markup { name = name };
+                    
+                    if (!currentText.StartsWith($"{name}="))
+                    {
+                        // Not a shorthand property, so safe to gobble up the name
+                        currentText = currentText.Substring(name.Length);
+                    }
+                }
+            }
+
+
+            return result;
+
+        }
+    }
     internal class Command : Step, IExpressionDestination
     {
         List<Expression> expressions = new List<Expression>();
         public void AddTextExpression(string textExpression)
         {
-            //if (string.IsNullOrEmpty(commandName))
-            //{
-            //    var splits = textExpression.Trim().Split(" ");
-            //    this.commandName = splits.First();
-            //    textExpression = textExpression.Substring(commandName.Length).Trim();
-            //}
             var ce = expressions.LastOrDefault() as CalculatedExpression;
             if (ce != null && textExpression == "}") { return; }
             var te = expressions.LastOrDefault() as TextExpression;
@@ -634,4 +762,7 @@ namespace ThreadBare
         
 
     }
+
+
+    
 }
