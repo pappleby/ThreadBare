@@ -21,6 +21,10 @@ namespace ThreadBare
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
         public int LineOrOptionTagParamCount = 0;
+        public HashSet<string> MarkupNames = new HashSet<string>();
+        public int MarkupsInLineCount = 0;
+        public int MarkupParamsInLineCount = 0;
+
         public Node? CurrentNode { get; set; }
 
         internal static YarnSpinnerParser.HashtagContext? GetLineIDTag(YarnSpinnerParser.HashtagContext[] hashtagContexts)
@@ -71,6 +75,9 @@ namespace ThreadBare
 
             sb.AppendLine($"constexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
             sb.AppendLine($"constexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
+
+            sb.AppendLine($"constexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
+            sb.AppendLine($"constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
 
             sb.Append("""
                 }
@@ -339,8 +346,7 @@ namespace ThreadBare
             sb.AppendLine($"\t\t\t// {lineID}");
             sb.AppendLine("\t\t\tcurrentLine.StartNewLine();");
 
-            var expressionsWithMarkup = Markup.ExtractMarkup(expressions);
-
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, node.compiler);
 
             expressionsWithMarkup.ForEach(expression =>
             {
@@ -407,7 +413,7 @@ namespace ThreadBare
         public List<string> parameterNames = new List<string>();
 
         public Markup() { }
-        public static List<Expression> ExtractMarkup(List<Expression> expressions)
+        public static List<Expression> ExtractMarkup(List<Expression> expressions, Compiler compiler)
         {
             var result = new List<Expression>();
             var activeMarkups = new List<string>();
@@ -448,19 +454,18 @@ namespace ThreadBare
                     {
                         currentText = currentText.TrimStart();
                         // Case 1: Handle end of markup
-                        if (currentText.StartsWith("/]"))
+                        var isEndSelfClosing = currentText.StartsWith("/]");
+                        var isEndNotSelfClosing = currentText.StartsWith("]");
+                        if(isEndSelfClosing || isEndNotSelfClosing)
                         {
+                            compiler.MarkupNames.Add(currentMarkup.name);
                             result.Add(currentMarkup);
+                            if (isEndNotSelfClosing)
+                            {
+                                activeMarkups.Add(currentMarkup.name);
+                            }
                             currentMarkup = null;
-                            currentText = currentText.Substring("/]".Length);
-                            continue;
-                        }
-                        if(currentText.StartsWith("]"))
-                        {
-                            result.Add(currentMarkup);
-                            activeMarkups.Add(currentMarkup.name);
-                            currentMarkup = null;
-                            currentText = currentText.Substring("]".Length);
+                            currentText = currentText.Substring(isEndSelfClosing ? 1 : 2);
                             continue;
                         }
 
@@ -520,7 +525,11 @@ namespace ThreadBare
                     }
                 }
             }
+            var markupCount = result.OfType<Markup>().Count();
+            var markupParamsCount = result.OfType<Markup>().SelectMany(m=>m.parameters).Count();
 
+            compiler.MarkupsInLineCount = Math.Max(markupCount, compiler.MarkupsInLineCount);
+            compiler.MarkupParamsInLineCount = Math.Max(markupParamsCount, compiler.MarkupParamsInLineCount);
 
             return result;
 

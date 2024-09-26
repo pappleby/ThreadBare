@@ -84,14 +84,13 @@ namespace ThreadBare
                 title: Start
                 tags: ntest ntestval:value
                 ---
-                <<declare $loop = 0>>
-                <<declare $stoop = 0>>
-
-                TestLine {$stoop} with condition <<if $loop > 10>>
-
-                TestLine2 {$loop} hmmmm
-                TestLine2 {$stoop} woow
-
+                
+                does short work? [test=590 param2=12 t=40 g=95 /]
+                Oh, [wave]hello[/wave] there!
+                Oh, [blister a=12]hello[/blister] there!
+                
+                
+                
 
                 tagtest #test #test2:value #tag3:7
                 ...Hmmm? You can't remember all that?
@@ -106,7 +105,6 @@ namespace ThreadBare
                 -> Option B
                     You chose option B
 
-                Oh, [wave]hello[/wave] there!
                 Me: hello!
                 This is a function test {1 + foobar(12, 1 + 4)} did it work?
 
@@ -207,6 +205,8 @@ namespace ThreadBare
             var result = compiler.Compile();
 
             Console.WriteLine(result);
+            Console.WriteLine($"Max markups in line: {compiler.MarkupsInLineCount}");
+            Console.WriteLine($"Max markup params in line: {compiler.MarkupParamsInLineCount}");
         }
 
     }
