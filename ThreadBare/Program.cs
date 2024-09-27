@@ -84,9 +84,13 @@ namespace ThreadBare
                 title: Start
                 tags: ntest ntestval:value
                 ---
-                
-                does short work? [test=590 param2=12 t=40 g=95 /]
+                [nomarkup]Here's a big ol' [ bunch of ] characters, filled [[]] with square [[] brackets![/nomarkup]
+                Here's a backslash! \\
+                Here's some square brackets, just for you: \[ \]
+                A [wave trimwhitespace=false/] B 
+                A [wave/] B
                 Oh, [wave]hello[/wave] there!
+                does short work? [test=590 param2=12 t=40 g=95 /]
                 Oh, [blister a=12]hello[/blister] there!
                 
                 

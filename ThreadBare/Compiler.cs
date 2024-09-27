@@ -24,6 +24,7 @@ namespace ThreadBare
         public HashSet<string> MarkupNames = new HashSet<string>();
         public int MarkupsInLineCount = 0;
         public int MarkupParamsInLineCount = 0;
+        public int MaxOptionsCount = 0;
 
         public Node? CurrentNode { get; set; }
 
@@ -72,12 +73,21 @@ namespace ThreadBare
 
                 namespace ThreadBare {
                 """);
-
+            
+            sb.AppendLine($"constexpr static int MAX_OPTIONS_COUNT = {MaxOptionsCount};");
             sb.AppendLine($"constexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
             sb.AppendLine($"constexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
 
             sb.AppendLine($"constexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
             sb.AppendLine($"constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
+
+            var joinedTags = String.Join(", ", LineTags);
+            sb.AppendLine("\n\t// tags:");
+            sb.AppendLine($"\tenum LineTag : int {{ {joinedTags} }};\n");
+
+            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m=>new List<string> { m, "close_" + m }));
+            sb.AppendLine("\n\t// attributes:");
+            sb.AppendLine($"\tenum Attribute : int {{ {joinedAttributes} }};\n");
 
             sb.Append("""
                 }
@@ -100,9 +110,6 @@ namespace ThreadBare
             {
                 sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner);");
             }
-            sb.AppendLine("\n\t// tags:");
-            var joinedTags = String.Join(", ", LineTags);
-            sb.AppendLine($"\tenum LineTag : int {{ {joinedTags} }};");    
 
             sb.Append("""
                 }
@@ -258,6 +265,7 @@ namespace ThreadBare
             this.tags.Add(tag);
             this.compiler.NodeTags.Add(tag.Name);
         }
+
         public string Compile()
         {
             var sb = new StringBuilder();
@@ -274,7 +282,12 @@ namespace ThreadBare
             }
             if (Steps.OfType<Line>().Any()) { 
                 sb.AppendLine("\t\tauto& currentLine = runner.currentLine;");
+                if (Steps.OfType<Line>().Any(l => l.hasMarkup))
+                {
+                    sb.AppendLine("\t\tauto& markup = currentLine.markup;");
+                }
             }
+
             sb.Append("\t\tenum NodeLabel { nodestart = 0");
             this.labels.ForEach(label => sb.Append($", {label}"));
             sb.Append("};\n");
@@ -313,6 +326,8 @@ namespace ThreadBare
         
         List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
+        public bool hasMarkup = false;
+
         public void AddTextExpression(string textExpression)
         {
             var ce = expressions.LastOrDefault() as CalculatedExpression;
@@ -360,16 +375,25 @@ namespace ThreadBare
                     sb.AppendLine($"\t\t\tcurrentLine << {text};");
                 } else if (expression is Markup)
                 {
+                    hasMarkup = true;
                     var markup = (Markup)expression;
-                    sb.AppendLine($"// Markup: {(markup.isStart?"":"close: ")}{markup.name} Parameter names = {String.Join(", ", markup.parameterNames)} Parameter values = {String.Join(", ", markup.parameters)}");
+                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart?"":"close_")}{markup.name});");
+                    sb.AppendLine($"\t\t\tmarkup.attributePositions.emplace_back(currentLine.length());");
+
+                    for (int i = 0; i < markup.parameters.Count; i++) 
+                    {
+                        var p = markup.parameters[i];
+                        var pname = markup.parameterNames[i];
+                        sb.AppendLine($"\t\t\tmarkup.attributeParams.emplace_back({p}); // {pname}");
+                    }
                 }
                 
 
             });
             if (tags.Any())
             {
-                var enumPrefixedTags = String.Join(", ", tags.Select(t => $"LineTag::{t.Name}"));
-                sb.AppendLine($"\t\t\tfor(int p : {{{enumPrefixedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
+                var joinedTags = string.Join(", ", tags.Select(t=>t.Name));
+                sb.AppendLine($"\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
                     var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
@@ -413,6 +437,14 @@ namespace ThreadBare
         public List<string> parameterNames = new List<string>();
 
         public Markup() { }
+        protected static void EscapeAndAdd(List<Expression> result, string input)
+        {
+            var escaped = input.Replace("\\[", "[").Replace("\\]", "]").Replace("\\", "\\\\");
+            if(!string.IsNullOrEmpty(escaped))
+            {
+                result.Add(new TextExpression { text = escaped });
+            }
+        }
         public static List<Expression> ExtractMarkup(List<Expression> expressions, Compiler compiler)
         {
             var result = new List<Expression>();
@@ -431,6 +463,7 @@ namespace ThreadBare
                 
                 var textExpression = sourceExpression as TextExpression;
                 if (textExpression == null) { throw new Exception("Unexpected expression type in markup parser."); }
+                var whitespaceTrimming = false;
                 var currentText = textExpression.text;
                 // iterate through text, gobbling up the next chunk as appropriate 
                 while (currentText.Any())
@@ -445,7 +478,7 @@ namespace ThreadBare
                         } else
                         {
                             isNoMarkupMode = false;
-                            result.Add(new TextExpression { text = currentText.Substring(0, closePosition) });
+                            EscapeAndAdd(result, currentText.Substring(0, closePosition));
                             currentText = currentText.Substring(closePosition + "[/nomarkup]".Length);
                             continue;
                         }
@@ -458,6 +491,13 @@ namespace ThreadBare
                         var isEndNotSelfClosing = currentText.StartsWith("]");
                         if(isEndSelfClosing || isEndNotSelfClosing)
                         {
+                            if(currentMarkup.name == "nomarkup")
+                            {
+                                isNoMarkupMode = true;
+                                currentMarkup = null;
+                                currentText = currentText.Substring(1);
+                                continue;
+                            }
                             compiler.MarkupNames.Add(currentMarkup.name);
                             result.Add(currentMarkup);
                             if (isEndNotSelfClosing)
@@ -465,7 +505,11 @@ namespace ThreadBare
                                 activeMarkups.Add(currentMarkup.name);
                             }
                             currentMarkup = null;
-                            currentText = currentText.Substring(isEndSelfClosing ? 1 : 2);
+                            currentText = currentText.Substring(isEndNotSelfClosing ? 1 : 2);
+                            if(whitespaceTrimming && currentText.Any() && char.IsWhiteSpace(currentText[0]))
+                            {
+                                currentText = currentText.Substring(1);
+                            }
                             continue;
                         }
 
@@ -480,18 +524,63 @@ namespace ThreadBare
                                 // the value is a calculated expression, so it'll get adding in the next expression iteration
                                 break; 
                             }
-                            var paramValue = Regex.Match(currentText, @"=([^]|\s|=]+)").Groups[1].Value;
-                            currentMarkup.parameters.Add(paramValue);
-                            currentText = currentText.Substring(1 + paramValue.Length);
+                            var paramValueBuilder = new StringBuilder();
+                            currentText = currentText.Substring(1);
+                            var isStringValue = false;
+                            if (currentText.StartsWith('\"')) { isStringValue = true; currentText = currentText.Substring(1); paramValueBuilder.Append("\""); }
+                            var isPreviousCharSlash = false;
+                            while(currentText.Any())
+                            {
+                                var c = currentText[0];
+                                // Don't want to gobble the closing brace
+                                if (c == ']' && !isPreviousCharSlash || currentText.StartsWith("/]"))
+                                {
+                                    break;
+                                }
+
+                                currentText = currentText.Substring(1);
+                                if (c == '"' && isStringValue && !isPreviousCharSlash)
+                                {
+                                    paramValueBuilder.Append('"');
+                                    break;
+                                }
+                                else if (c == ' ' && !isStringValue)
+                                {
+                                    break;
+                                }
+                                else if (c == '\\' && !isPreviousCharSlash)
+                                {
+                                    isPreviousCharSlash = true;
+                                    continue;
+                                }
+                                else 
+                                {
+                                    paramValueBuilder.Append(c);
+                                }   
+                            }
+                            var paramValue = paramValueBuilder.ToString();
+                            if(currentMarkup.parameterNames.Last() == "trimwhitespace") {
+                                currentMarkup.parameterNames.Remove("trimwhitespace");
+                                whitespaceTrimming &= paramValue != "false"; 
+                            } else
+                            {
+                                currentMarkup.parameters.Add(paramValue);
+                            }
+                            
                             continue;
                         }
                         continue;    
                     }
                     // No current markup, so search in string to find the next one, if any
-                    var match = Regex.Match(currentText, @"(?<!/)(?://)*(\[[/]?\w*)");
-                    if(!match.Success) { result.Add(new TextExpression { text = currentText }); break; }
-                    
-                    result.Add(new TextExpression { text = currentText.Substring(0, match.Index) });
+                    var match = Regex.Match(currentText, @"(?<!\\)(?:\\\\)*(\[[/]?\w*)");
+                    if(!match.Success) { 
+                        EscapeAndAdd(result, currentText);
+                        break; }
+                    if(match.Index == 0 || char.IsWhiteSpace(currentText[match.Index - 1]))
+                    {
+                        whitespaceTrimming = true;
+                    }
+                    EscapeAndAdd(result, currentText.Substring(0, match.Index));
                     currentText = currentText.Substring(match.Index + 1);
                     // This is a closing block
                     if (currentText.StartsWith('/'))
@@ -532,7 +621,6 @@ namespace ThreadBare
             compiler.MarkupParamsInLineCount = Math.Max(markupParamsCount, compiler.MarkupParamsInLineCount);
 
             return result;
-
         }
     }
     internal class Command : Step, IExpressionDestination
@@ -680,6 +768,7 @@ namespace ThreadBare
         }
         public string Compile(Node node)
         {
+            node.compiler.MaxOptionsCount = Math.Max(node.compiler.MaxOptionsCount, (this.index + 1));
             var lineId = node.RegisterLabel($"OptionLine{lineID}");
 
             var sb = new StringBuilder();
@@ -690,7 +779,13 @@ namespace ThreadBare
             {
                 sb.AppendLine($"\t\t\t\tcurrentOption.condition = {condition};");
             }
-            expressions.ForEach(expression =>
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, node.compiler);
+            if(expressionsWithMarkup.OfType<Markup>().Any())
+            {
+                sb.AppendLine($"\t\t\t\tauto& optionMarkup = currentOption.markup;");
+            }
+            
+            expressionsWithMarkup.ForEach(expression =>
             {
                 if (expression is TextExpression)
                 {
@@ -703,12 +798,32 @@ namespace ThreadBare
                     var text = ((CalculatedExpression)expression).text;
                     sb.AppendLine($"\t\t\t\tcurrentOption << {text};");
                 }
-            sb.AppendLine($"\t\t\t\trunner.options.push_back(currentOption);");
-            sb.AppendLine("\t\t\t}");
+                else if (expression is Markup markup)
+                {
+                    sb.AppendLine($"\t\t\t\toptionMarkup.attributes.emplace_back(Attribute::{(markup.isStart ? "" : "close_")}{markup.name});");
+                    sb.AppendLine($"\t\t\t\toptionMarkup.attributePositions.emplace_back(currentLine.length());");
 
+                    for (int i = 0; i < markup.parameters.Count; i++)
+                    {
+                        var p = markup.parameters[i];
+                        var pname = markup.parameterNames[i];
+                        sb.AppendLine($"\t\t\t\toptionMarkup.attributeParams.emplace_back({p}); // {pname}");
+                    }
+                }
             });
-            
-            sb.AppendLine();
+            if (tags.Any())
+            {
+                var joinedTags = string.Join(", ", tags.Select(t => t.Name));
+                sb.AppendLine($"\t\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ optionMarkup.tags.emplace_back(p);}}");
+                if (tags.Any(t => t.Params.Any()))
+                {
+                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    sb.AppendLine($"\t\t\t\tfor(int p : {{{joinedTagParams}}}) {{ optionMarkup.tagParams.emplace_back(p);}}");
+                }
+            }
+            sb.AppendLine($"\t\t\t\trunner.options.push_back(currentOption);");
+            sb.AppendLine("\t\t\t}\n");
+
 
             return sb.ToString();
 
