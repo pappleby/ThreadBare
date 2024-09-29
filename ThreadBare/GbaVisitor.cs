@@ -149,6 +149,18 @@ namespace ThreadBare
         public override int VisitCommand_statement(YarnSpinnerParser.Command_statementContext context)
         {
             var cn = this.compiler.CurrentNode;
+
+            // placing detour handling here instead of in compiler since I suspect this will be parsed out in v3
+            var commandText = context.command_formatted_text().GetText();
+            if(commandText.StartsWith("detour "))
+            {
+                var d = new Detour();
+                var destination = commandText.Substring("detour ".Length);
+                d.Target = destination;
+                cn?.AddStep(d);
+                return 0;
+            }
+
             var c = new Command();
 
             foreach (var node in context.command_formatted_text().children)

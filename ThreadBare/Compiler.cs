@@ -54,9 +54,6 @@ namespace ThreadBare
             sb.AppendLine($"""#include "script.h" """);
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
-            sb.AppendLine($"// Node Tags: {string.Join(", ", NodeTags)}");
-            sb.AppendLine($"// Line Tags: {string.Join(", ", LineTags)}");
-            sb.AppendLine($"// Option Tags: {string.Join(", ", OptionTags)}");
             foreach ( var node in Nodes.Values )
             {
                 sb.Append(node.Compile());
@@ -81,13 +78,21 @@ namespace ThreadBare
             sb.AppendLine($"constexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
             sb.AppendLine($"constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
 
-            var joinedTags = String.Join(", ", LineTags);
-            sb.AppendLine("\n\t// tags:");
-            sb.AppendLine($"\tenum LineTag : int {{ {joinedTags} }};\n");
+            var joinedNodes = String.Join(", ", NodeNames);
+            sb.AppendLine("\n\t// nodes:");
+            sb.AppendLine($"\tenum class Node : int {{ {joinedNodes} }};");
 
-            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m=>new List<string> { m, "close_" + m }));
+            var joinedNodeTags = String.Join(", ", NodeTags);
+            sb.AppendLine("\n\t// node tags:");
+            sb.AppendLine($"\tenum class NodeTag : int {{ {joinedNodeTags} }};");
+
+            var joinedTags = String.Join(", ", LineTags.Concat(OptionTags));
+            sb.AppendLine("\n\t// tags:");
+            sb.AppendLine($"\tenum class LineTag : int {{ {joinedTags} }};");
+
+            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m=>new List<string> { m, "_" + m }));
             sb.AppendLine("\n\t// attributes:");
-            sb.AppendLine($"\tenum Attribute : int {{ {joinedAttributes} }};\n");
+            sb.AppendLine($"\tenum class Attribute : int {{ {joinedAttributes} }};\n");
 
             sb.Append("""
                 }
@@ -108,7 +113,7 @@ namespace ThreadBare
             sb.AppendLine($"\t// Nodes:");
             foreach (var nodeName in NodeNames)
             {
-                sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner);");
+                sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner, NodeState& nodeState);");
             }
 
             sb.Append("""
@@ -269,12 +274,25 @@ namespace ThreadBare
         public string Compile()
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"\tvoid {Name}(TBScriptRunner& runner)\n\t{{");
+            sb.AppendLine($"\tvoid {Name}(TBScriptRunner& runner, NodeState& nodeState)\n\t{{");
 
             var sbSteps = new StringBuilder();
-            sbSteps.AppendLine("\t\tswitch (runner.nextStep)");
+            sbSteps.AppendLine("\t\tswitch (nodeState.nextStep)");
             sbSteps.AppendLine("\t\t{");
             sbSteps.AppendLine("\t\tcase nodestart:");
+
+            if (tags.Any())
+            {
+                sbSteps.AppendLine("\t\t\t// Node Tags:");
+                var joinedTags = string.Join(", ", tags.Select(t => $"NodeTag::{t.Name}"));
+                sbSteps.AppendLine($"\t\t\tfor(NodeTag p : {{{joinedTags}}}) {{ nodeState.tags.emplace_back(p);}}");
+                if (tags.Any(t => t.Params.Any()))
+                {
+                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    sbSteps.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ nodeState.tagParams.emplace_back(p);}}");
+                }
+            sbSteps.AppendLine();
+            }
 
             foreach (var step in Steps)
             {
@@ -294,7 +312,7 @@ namespace ThreadBare
 
             sb.Append(sbSteps.ToString());
             
-            sb.AppendLine("\t\t\trunner.Stop();");
+            sb.AppendLine("\t\t\trunner.EndNode();");
             sb.AppendLine("\t\tdefault:");
             sb.AppendLine("\t\t\t//todo, throw error: invalid node step");
             sb.AppendLine("\t\t\tbreak;");
@@ -314,8 +332,24 @@ namespace ThreadBare
         public string Compile(Node node)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"\t\t\t\trunner.Jump(&{Target});");
-            sb.AppendLine("\t\t\t\treturn;");
+            sb.AppendLine($"\t\t\trunner.Jump(&{Target});");
+            sb.AppendLine("\t\t\treturn;");
+            return sb.ToString();
+        }
+    }
+    internal class Detour : Step
+    {
+        public string Target = "Start";
+        public string Compile(Node node)
+        {
+            var label = node.RegisterLabel($"DetourContinue_{Target}");
+            var sb = new StringBuilder();
+            sb.AppendLine($"\t\t\tnodeState.nextStep = {label};");
+            sb.AppendLine($"\t\t\trunner.Detour(&{Target});");
+            sb.AppendLine("\t\t\treturn;");
+            sb.AppendLine($"\t\tcase {label}:");
+            sb.AppendLine();
+
             return sb.ToString();
         }
     }
@@ -349,6 +383,7 @@ namespace ThreadBare
         }
         public void AddTag(Compiler compiler, string text)
         {
+            this.hasMarkup = true;
             var tag = new Tag(TagLocation.Line, text);
             this.tags.Add(tag);
             compiler.LineTags.Add(tag.Name);
@@ -377,7 +412,7 @@ namespace ThreadBare
                 {
                     hasMarkup = true;
                     var markup = (Markup)expression;
-                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart?"":"close_")}{markup.name});");
+                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart?"":"_")}{markup.name});");
                     sb.AppendLine($"\t\t\tmarkup.attributePositions.emplace_back(currentLine.length());");
 
                     for (int i = 0; i < markup.parameters.Count; i++) 
@@ -392,7 +427,7 @@ namespace ThreadBare
             });
             if (tags.Any())
             {
-                var joinedTags = string.Join(", ", tags.Select(t=>t.Name));
+                var joinedTags = string.Join(", ", tags.Select(t=>$"LineTag::{t.Name}"));
                 sb.AppendLine($"\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
@@ -780,7 +815,7 @@ namespace ThreadBare
                 sb.AppendLine($"\t\t\t\tcurrentOption.condition = {condition};");
             }
             var expressionsWithMarkup = Markup.ExtractMarkup(expressions, node.compiler);
-            if(expressionsWithMarkup.OfType<Markup>().Any())
+            if(expressionsWithMarkup.OfType<Markup>().Any() || tags.Any())
             {
                 sb.AppendLine($"\t\t\t\tauto& optionMarkup = currentOption.markup;");
             }
@@ -800,7 +835,7 @@ namespace ThreadBare
                 }
                 else if (expression is Markup markup)
                 {
-                    sb.AppendLine($"\t\t\t\toptionMarkup.attributes.emplace_back(Attribute::{(markup.isStart ? "" : "close_")}{markup.name});");
+                    sb.AppendLine($"\t\t\t\toptionMarkup.attributes.emplace_back(Attribute::{(markup.isStart ? "" : "_")}{markup.name});");
                     sb.AppendLine($"\t\t\t\toptionMarkup.attributePositions.emplace_back(currentLine.length());");
 
                     for (int i = 0; i < markup.parameters.Count; i++)
@@ -813,7 +848,7 @@ namespace ThreadBare
             });
             if (tags.Any())
             {
-                var joinedTags = string.Join(", ", tags.Select(t => t.Name));
+                var joinedTags = string.Join(", ", tags.Select(t => $"LineTag::{t.Name}"));
                 sb.AppendLine($"\t\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ optionMarkup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
@@ -862,7 +897,7 @@ namespace ThreadBare
 
 
             RegexOptions options = RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture;
-            Regex regex = new Regex(@"^(#?(?<tagname>([a-z]+[a-z,\d])))($|\s|:(?<tagparams>([a-z,\d,:])*))\s*$", options);
+            Regex regex = new Regex(@"^(#?(?<tagname>([a-z]+[a-z,\d])))($|\s|:(?<tagparams>([a-z,\d,:,_])*))\s*$", options);
 
             var parsedTag = regex.Matches(text)[0];
             this.Name = parsedTag.Groups["tagname"].Value;

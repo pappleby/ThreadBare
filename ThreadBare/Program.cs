@@ -82,8 +82,9 @@ namespace ThreadBare
         {
             ICharStream input = CharStreams.fromstring(""""
                 title: Start
-                tags: ntest ntestval:value
+                tags: #camera2 nodetagtest:conductor_cabin
                 ---
+                <<detour OtherNode>>
                 [nomarkup]Here's a big ol' [ bunch of ] characters, filled [[]] with square [[] brackets![/nomarkup]
                 Here's a backslash! \\
                 Here's some square brackets, just for you: \[ \]
