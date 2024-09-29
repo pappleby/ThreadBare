@@ -50,7 +50,6 @@ namespace ThreadBare
         {
             var sb = new StringBuilder();
             // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
-            sb.AppendLine($"""#include "{HeaderName}" """);
             sb.AppendLine($"""#include "script.h" """);
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
@@ -61,25 +60,26 @@ namespace ThreadBare
             sb.AppendLine("}");
             return sb.ToString(); 
         }
-        public string CompileConstsHeader()
+        public string CompileScriptHeader()
         {
             var sb = new StringBuilder();
             sb.AppendLine("""
-                #ifndef CONSTS_YARN_H
-                #define CONSTS_YARN_H
+                #ifndef SCRIPT_YARN_H
+                #define SCRIPT_YARN_H
 
                 namespace ThreadBare {
                 """);
-            
-            sb.AppendLine($"constexpr static int MAX_OPTIONS_COUNT = {MaxOptionsCount};");
-            sb.AppendLine($"constexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
-            sb.AppendLine($"constexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
+            sb.AppendLine("\tclass TBScriptRunner;");
+            sb.AppendLine("\tclass NodeState;");
+            sb.AppendLine($"\tconstexpr static int MAX_OPTIONS_COUNT = {MaxOptionsCount};");
+            sb.AppendLine($"\tconstexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
+            sb.AppendLine($"\tconstexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
 
-            sb.AppendLine($"constexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
-            sb.AppendLine($"constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
+            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
+            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
 
             var joinedNodes = String.Join(", ", NodeNames);
-            sb.AppendLine("\n\t// nodes:");
+            sb.AppendLine("\n\t// nodes names");
             sb.AppendLine($"\tenum class Node : int {{ {joinedNodes} }};");
 
             var joinedNodeTags = String.Join(", ", NodeTags);
@@ -90,26 +90,10 @@ namespace ThreadBare
             sb.AppendLine("\n\t// tags:");
             sb.AppendLine($"\tenum class LineTag : int {{ {joinedTags} }};");
 
-            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m=>new List<string> { m, "_" + m }));
+            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m => new List<string> { m, "_" + m }));
             sb.AppendLine("\n\t// attributes:");
             sb.AppendLine($"\tenum class Attribute : int {{ {joinedAttributes} }};\n");
 
-            sb.Append("""
-                }
-                #endif
-                """);
-            return sb.ToString();
-        }
-        public string CompileScriptHeader()
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("""
-                #ifndef SCRIPT_YARN_H
-                #define SCRIPT_YARN_H
-                #include "threadbare.h"
-
-                namespace ThreadBare {
-                """);
             sb.AppendLine($"\t// Nodes:");
             foreach (var nodeName in NodeNames)
             {
