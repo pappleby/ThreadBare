@@ -380,7 +380,7 @@ namespace ThreadBare
             sb.AppendLine($"\t\t\t// {lineID}");
             sb.AppendLine("\t\t\tcurrentLine.StartNewLine();");
 
-            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, node.compiler);
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine:true, node.compiler);
 
             expressionsWithMarkup.ForEach(expression =>
             {
@@ -464,7 +464,7 @@ namespace ThreadBare
                 result.Add(new TextExpression { text = escaped });
             }
         }
-        public static List<Expression> ExtractMarkup(List<Expression> expressions, Compiler compiler)
+        public static List<Expression> ExtractMarkup(List<Expression> expressions, bool isLine, Compiler compiler)
         {
             var result = new List<Expression>();
             var activeMarkups = new List<string>();
@@ -636,6 +636,54 @@ namespace ThreadBare
             var markupCount = result.OfType<Markup>().Count();
             var markupParamsCount = result.OfType<Markup>().SelectMany(m=>m.parameters).Count();
 
+            var needCharacter = isLine && !result.OfType<Markup>().Any(m => m.name == "character");
+            if(needCharacter)
+            {
+                // Potentially strip out a leading ":" if line dummy's out the character
+                var firstResult = result.First();
+                if(firstResult is TextExpression te)
+                {
+                    if (te.text.StartsWith(':'))
+                    {
+                        te.text = te.text.Substring(1);
+                        needCharacter = false;
+                    }
+                }
+            }
+
+            if (needCharacter)
+            {
+                for (var i = 0; i < result.Count(); i++)
+                {
+                    var te = result[i] as TextExpression;
+                    if (te == null)
+                    {
+                        continue;
+                    }
+                    var text = te.text.ToString();
+                    if (text.Contains(":"))
+                    {
+                        markupCount += 2;
+                        compiler.MarkupNames.Add("character");
+                        result.RemoveAt(i); // remove the unsplit text element
+                        var textParts = text.Split(":", 2, StringSplitOptions.TrimEntries);
+                        // inserting in reverse order
+                        if (!string.IsNullOrWhiteSpace(textParts[1]))
+                        {
+                            result.Insert(i, new TextExpression { text = textParts[1] });
+                        }
+                        result.Insert(i, new Markup { name = "character", isStart=false });
+                        if (!string.IsNullOrWhiteSpace(textParts[0]))
+                        {
+                            result.Insert(i, new TextExpression { text = textParts[0] });
+                        }
+                        result.Insert(0, new Markup { name = "character" });
+                        break;
+                    }
+
+                }
+            }
+
             compiler.MarkupsInLineCount = Math.Max(markupCount, compiler.MarkupsInLineCount);
             compiler.MarkupParamsInLineCount = Math.Max(markupParamsCount, compiler.MarkupParamsInLineCount);
 
@@ -798,7 +846,7 @@ namespace ThreadBare
             {
                 sb.AppendLine($"\t\t\t\tcurrentOption.condition = {condition};");
             }
-            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, node.compiler);
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine:false, node.compiler);
             if(expressionsWithMarkup.OfType<Markup>().Any() || tags.Any())
             {
                 sb.AppendLine($"\t\t\t\tauto& optionMarkup = currentOption.markup;");
