@@ -78,21 +78,21 @@ namespace ThreadBare
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
 
-            var joinedNodes = String.Join(", ", NodeNames);
+            var joinedNodes = string.Join(", ", NodeNames);
             sb.AppendLine("\n\t// nodes names");
             sb.AppendLine($"\tenum class Node : int {{ {joinedNodes} }};");
 
-            var joinedNodeTags = String.Join(", ", NodeTags);
+            var joinedNodeTags = string.Join(", ", NodeTags);
             sb.AppendLine("\n\t// node tags:");
             sb.AppendLine($"\tenum class NodeTag : int {{ {joinedNodeTags} }};");
 
-            var joinedTags = String.Join(", ", LineTags.Concat(OptionTags));
+            var joinedTags = string.Join(", ", LineTags.Concat(OptionTags));
             sb.AppendLine("\n\t// tags:");
             sb.AppendLine($"\tenum class LineTag : int {{ {joinedTags} }};");
 
-            var joinedAttributes = String.Join(", ", MarkupNames.SelectMany(m => new List<string> { m, "_" + m }));
+            var joinedAttributes = string.Join(", ", MarkupNames.SelectMany(m => new List<string> { m, "_" + m }));
             sb.AppendLine("\n\t// attributes:");
-            sb.AppendLine($"\tenum class Attribute : int {{ {joinedAttributes} }};\n");
+            sb.AppendLine($"\tenum class Attribute : int {{ {joinedAttributes} }};");
 
             sb.AppendLine($"\t// Nodes:");
             foreach (var nodeName in NodeNames)
@@ -272,7 +272,7 @@ namespace ThreadBare
                 sbSteps.AppendLine($"\t\t\tfor(NodeTag p : {{{joinedTags}}}) {{ nodeState.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
-                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    var joinedTagParams = string.Join(", ", tags.SelectMany(t => t.Params));
                     sbSteps.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ nodeState.tagParams.emplace_back(p);}}");
                 }
             sbSteps.AppendLine();
@@ -384,30 +384,34 @@ namespace ThreadBare
 
             expressionsWithMarkup.ForEach(expression =>
             {
-                if (expression is TextExpression)
+                if (expression is TextExpression te)
                 {
-                    var text = ((TextExpression)expression).text;
+                    var text = te.text;
                     var trimmedExpression = text.ReplaceLineEndings("").Replace("\"", "\\\"");
                     sb.AppendLine($"\t\t\tcurrentLine << \"{trimmedExpression}\";");
-                } else if (expression is CalculatedExpression) {
-                    var text = ((CalculatedExpression)expression).text;
+                }
+                else if (expression is CalculatedExpression ce)
+                {
+                    var text = ce.text;
                     sb.AppendLine($"\t\t\tcurrentLine << {text};");
-                } else if (expression is Markup)
+                }
+                else if (expression is Markup markup)
                 {
                     hasMarkup = true;
-                    var markup = (Markup)expression;
-                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart?"":"_")}{markup.name});");
+                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart ? "" : "_")}{markup.name});");
                     sb.AppendLine($"\t\t\tmarkup.attributePositions.emplace_back(currentLine.length());");
 
-                    for (int i = 0; i < markup.parameters.Count; i++) 
+                    for (int i = 0; i < markup.parameters.Count; i++)
                     {
                         var p = markup.parameters[i];
                         var pname = markup.parameterNames[i];
                         sb.AppendLine($"\t\t\tmarkup.attributeParams.emplace_back({p}); // {pname}");
                     }
                 }
-                
-
+                else if (expression is Select select)
+                {
+                    sb.AppendLine(select.getText());
+                }
             });
             if (tags.Any())
             {
@@ -415,7 +419,7 @@ namespace ThreadBare
                 sb.AppendLine($"\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
-                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    var joinedTagParams = string.Join(", ", tags.SelectMany(t => t.Params));
                     sb.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ currentLine.markup.tagParams.emplace_back(p);}}");
                 }
             }
@@ -633,8 +637,24 @@ namespace ThreadBare
                     }
                 }
             }
+
+            for (int i = 0; i < result.Count; i++)
+            {
+                var resultItem = result[i];
+                if(resultItem is Markup markup && markup.name == "select")
+                {
+                    result.RemoveAt(i);
+                    var selectExpression = new Select(markup, isLine, compiler);
+                    result.Insert(i, selectExpression);
+                }
+            }
+
+
             var markupCount = result.OfType<Markup>().Count();
             var markupParamsCount = result.OfType<Markup>().SelectMany(m=>m.parameters).Count();
+
+
+
 
             var needCharacter = isLine && !result.OfType<Markup>().Any(m => m.name == "character");
             if(needCharacter)
@@ -877,6 +897,10 @@ namespace ThreadBare
                         sb.AppendLine($"\t\t\t\toptionMarkup.attributeParams.emplace_back({p}); // {pname}");
                     }
                 }
+                else if (expression is Select select)
+                {
+                    sb.AppendLine(select.getText());
+                }
             });
             if (tags.Any())
             {
@@ -884,7 +908,7 @@ namespace ThreadBare
                 sb.AppendLine($"\t\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ optionMarkup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
-                    var joinedTagParams = String.Join(", ", tags.SelectMany(t => t.Params));
+                    var joinedTagParams = string.Join(", ", tags.SelectMany(t => t.Params));
                     sb.AppendLine($"\t\t\t\tfor(int p : {{{joinedTagParams}}}) {{ optionMarkup.tagParams.emplace_back(p);}}");
                 }
             }
@@ -914,6 +938,55 @@ namespace ThreadBare
         public string Compile(Node node)
         {
             return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
+        }
+    }
+
+    internal class Select : Expression
+    {
+        Dictionary<string, string> mapping = new Dictionary<string, string>();
+        string matchValue = "";
+        bool isLine = true;
+        bool isNumberKeys = false;
+        public Select(Markup markup, bool isLine, Compiler compiler)
+        {
+            this.isLine = isLine;
+            var valueIndex = markup.parameterNames.FindIndex(t => t == "value");
+
+            matchValue = markup.parameters[valueIndex].Trim('"').Trim('{', '}');
+            markup.parameters.RemoveAt(valueIndex);
+            markup.parameterNames.RemoveAt(valueIndex);
+
+            if(markup.parameterNames.All(p=> int.TryParse(p,out _) || p.Contains("::")))
+            {
+                isNumberKeys = true;
+            }
+
+            for (int i = 0; i < markup.parameters.Count(); i++)
+            {
+                var name = markup.parameterNames[i];
+                name = name.Contains("::") ? $"(int){name}" : name;
+                mapping.Add(name, markup.parameters[i]);
+            }
+        }
+        public string getText() {
+            var tabs = isLine ? "\t\t\t" : "\t\t\t\t";
+            var sb = new StringBuilder();
+
+            sb.AppendLine($"{tabs}switch({(isNumberKeys ? matchValue : $"bn::make_hash({matchValue})")}) {{");
+            foreach (var map in mapping)
+            {
+                sb.Append($"{tabs}\tcase {(isNumberKeys ? map.Key: $"\"{map.Key}\"_h")}: ");
+                if (isLine)
+                {
+                    sb.Append($"currentLine << {map.Value}; break;\n");
+                } else
+                {
+                    sb.Append($"currentOption << {map.Value}; break; \n");
+                }
+            }
+            sb.AppendLine($"{tabs}\tdefault: break;");
+            sb.AppendLine($"{tabs}}}");
+            return sb.ToString();
         }
     }
 

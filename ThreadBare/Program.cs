@@ -82,6 +82,14 @@ namespace ThreadBare
                 title: Start
                 tags: #camera2 nodetagtest:conductor_cabin
                 ---
+
+                I think [select value={$gender} 1="he" 2="she" 3="they" /] will be there!
+                I think [select value={$gender} m="he" f="she" nb="they" /] will be there!
+                -> Option [select value={$gender} m="he" f="she" nb="they" /] will be there!
+                    rad
+                -> Option 2
+                    blah
+
                 <<detour OtherNode>>
                 [nomarkup]Here's a big ol' [ bunch of ] characters, filled [[]] with square [[] brackets![/nomarkup]
                 Here's a backslash! \\
@@ -107,6 +115,8 @@ namespace ThreadBare
                         You chose Option D
                 -> Option B
                     You chose option B
+                -> Option [select value={$gender} m="he" f="she" nb="they" /] will be there!
+                    rad
 
                 Me: hello!
                 This is a function test {1 + foobar(12, 1 + 4)} did it work?
@@ -206,7 +216,7 @@ namespace ThreadBare
 
 
             var result = compiler.Compile();
-
+            var headerResult = compiler.CompileScriptHeader();
             Console.WriteLine(result);
             Console.WriteLine($"Max markups in line: {compiler.MarkupsInLineCount}");
             Console.WriteLine($"Max markup params in line: {compiler.MarkupParamsInLineCount}");
