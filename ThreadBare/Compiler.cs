@@ -412,6 +412,10 @@ namespace ThreadBare
                 {
                     sb.AppendLine(select.getText());
                 }
+                else if (expression is PluralMarkup pm)
+                {
+                    sb.AppendLine(pm.getText());
+                }
             });
             if (tags.Any())
             {
@@ -468,6 +472,7 @@ namespace ThreadBare
                 result.Add(new TextExpression { text = escaped });
             }
         }
+        protected static List<string> MarkupExcludeList = new List<string> { "select", "plural", "ordinal" };
         public static List<Expression> ExtractMarkup(List<Expression> expressions, bool isLine, Compiler compiler)
         {
             var result = new List<Expression>();
@@ -521,7 +526,10 @@ namespace ThreadBare
                                 currentText = currentText.Substring(1);
                                 continue;
                             }
-                            compiler.MarkupNames.Add(currentMarkup.name);
+                            if (!MarkupExcludeList.Contains(currentMarkup.name))
+                            {
+                                compiler.MarkupNames.Add(currentMarkup.name);
+                            }
                             result.Add(currentMarkup);
                             if (isEndNotSelfClosing)
                             {
@@ -646,6 +654,11 @@ namespace ThreadBare
                     result.RemoveAt(i);
                     var selectExpression = new Select(markup, isLine, compiler);
                     result.Insert(i, selectExpression);
+                } else if(resultItem is Markup pm && (pm.name == "plural" || pm.name == "ordinal"))
+                {
+                    result.RemoveAt(i);
+                    var pluralExpression = new PluralMarkup(pm, isLine, compiler);
+                    result.Insert(i, pluralExpression);
                 }
             }
 
@@ -940,7 +953,80 @@ namespace ThreadBare
             return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
         }
     }
+    internal class PluralMarkup: Expression
+    {
+        bool isCardinal = true; // if false then is ordinal
+        bool isLine = true;
+        string matchValue = "";
+        string? Zero;
+        string? One;
+        string? Two;
+        string? Few;
+        string? Many;
+        string? Other;
+        public PluralMarkup(Markup markup, bool isLine, Compiler compiler)
+        {
+            this.isCardinal = markup.name == "plural";
+            this.isLine = isLine;
+            var valueIndex = markup.parameterNames.FindIndex(t => t == "value");
 
+            matchValue = markup.parameters[valueIndex].Trim('"').Trim('{', '}');
+            markup.parameters.RemoveAt(valueIndex);
+            markup.parameterNames.RemoveAt(valueIndex);
+
+            for (int i = 0; i < markup.parameters.Count(); i++)
+            {
+                var name = markup.parameterNames[i];
+                string paramValue = markup.parameters[i].Trim('"').Trim('{', '}'); ;
+                switch (name)
+                {
+                    case "zero": Zero = paramValue; break;
+                    case "one": One = paramValue; break;
+                    case "two": Two = paramValue; break;
+                    case "few": Few = paramValue; break;
+                    case "many": Many = paramValue; break;
+                    case "other": Other = paramValue; break;
+                    default: break;
+                }
+            }
+        }
+        protected void ExtractPlaceholder(string text, string pluralCase, string tabs, StringBuilder sb)
+        {
+            var splitPattern = "(%)";
+            var subExpressions = Regex.Split(text, splitPattern).Where(t => !string.IsNullOrEmpty(t)).Select(t => t == "%" ? matchValue : $"\"{t}\"");
+            sb.AppendLine($"{tabs}\tcase PluralCase::{pluralCase}: ");
+            foreach(var chunk in subExpressions)
+            {
+                if (isLine)
+                {
+                    sb.AppendLine($"{tabs}\t\tcurrentLine << {chunk};");
+                }
+                else
+                {
+                    sb.Append($"{tabs}\t\tcurrentOption << {chunk};");
+                }
+            }
+            sb.AppendLine($"{tabs}\t\tbreak;");
+        }
+        public string getText()
+        {
+            var tabs = isLine ? "\t\t\t" : "\t\t\t\t";
+            var sb = new StringBuilder();
+
+            sb.AppendLine($"{tabs}switch({(isCardinal ? "GetCardinalPluralCase" : "GetOrdinalPluralCase")}({matchValue})) {{");
+            if (!string.IsNullOrEmpty(Zero)) { ExtractPlaceholder(Zero, "Zero", tabs, sb); }
+            if (!string.IsNullOrEmpty(One)) { ExtractPlaceholder(One, "One", tabs, sb); }
+            if (!string.IsNullOrEmpty(Two)) { ExtractPlaceholder(Two, "Two", tabs, sb); }
+            if (!string.IsNullOrEmpty(Few)) { ExtractPlaceholder(Few, "Few", tabs, sb); }
+            if (!string.IsNullOrEmpty(Many)) { ExtractPlaceholder(Many, "Many", tabs, sb); }
+            if (!string.IsNullOrEmpty(Other)) { ExtractPlaceholder(Other, "Other", tabs, sb); }
+
+
+            sb.AppendLine($"{tabs}\tdefault: break;");
+            sb.AppendLine($"{tabs}}}");
+            return sb.ToString();
+        }
+    }
     internal class Select : Expression
     {
         Dictionary<string, string> mapping = new Dictionary<string, string>();

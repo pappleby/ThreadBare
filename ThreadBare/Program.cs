@@ -83,6 +83,9 @@ namespace ThreadBare
                 tags: #camera2 nodetagtest:conductor_cabin
                 ---
 
+                this is a test with replacement [plural value={$pie_count} other="% pies % text" /]
+                this is a plural test [plural value={$pie_count} one="A pie" other="Some pies" /]
+
                 I think [select value={$gender} 1="he" 2="she" 3="they" /] will be there!
                 I think [select value={$gender} m="he" f="she" nb="they" /] will be there!
                 -> Option [select value={$gender} m="he" f="she" nb="they" /] will be there!
