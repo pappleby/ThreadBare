@@ -25,6 +25,8 @@ namespace ThreadBare
         public int MarkupsInLineCount = 0;
         public int MarkupParamsInLineCount = 0;
         public int MaxOptionsCount = 0;
+        public HashSet<string> VisitedNodeNames = new HashSet<string>();
+        public HashSet<string> VisitedCountNodeNames = new HashSet<string>();
 
         public Node? CurrentNode { get; set; }
 
@@ -78,13 +80,27 @@ namespace ThreadBare
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
 
+            // Need to round up to the nearest 8
+            var vnc = VisitedNodeNames.Count();
+            vnc = Math.Max(8, ((8-(vnc % 8)) % 8) + vnc);
+            sb.AppendLine($"\tconstexpr static int VISITED_NODE_COUNT = {vnc};");
+            // Need at least 1 for array storage
+            sb.AppendLine($"\tconstexpr static int VISIT_COUNT_NODE_COUNT = {Math.Max(1, VisitedCountNodeNames.Count())};");
+
             var joinedNodes = string.Join(", ", NodeNames);
             sb.AppendLine("\n\t// nodes names");
             sb.AppendLine($"\tenum class Node : int {{ {joinedNodes} }};");
 
             var joinedNodeTags = string.Join(", ", NodeTags);
-            sb.AppendLine("\n\t// node tags:");
+            sb.AppendLine("\n\t// nodes:");
             sb.AppendLine($"\tenum class NodeTag : int {{ {joinedNodeTags} }};");
+
+            var vnn = string.Join(", ", VisitedNodeNames);
+            sb.AppendLine($"\tenum class VisitedNodeName : int {{ {vnn} }};"); 
+            
+            var vcnn = string.Join(", ", VisitedCountNodeNames);
+            sb.AppendLine($"\tenum class VisitCountedNodeName : int {{ {vcnn} }};");
+            
 
             var joinedTags = string.Join(", ", LineTags.Concat(OptionTags));
             sb.AppendLine("\n\t// tags:");
@@ -214,6 +230,8 @@ namespace ThreadBare
         public Stack<string> parameters = new Stack<string>();
         private int labelCount = 1;
         List<string> labels = new List<string>();
+        public bool isVisited = false;
+        public bool isVisitCounted = false;
         /// <summary>
         /// Generates a unique label name to use in the program.
         /// </summary>
@@ -264,7 +282,13 @@ namespace ThreadBare
             sbSteps.AppendLine("\t\tswitch (nodeState.nextStep)");
             sbSteps.AppendLine("\t\t{");
             sbSteps.AppendLine("\t\tcase nodestart:");
-
+            if (this.compiler.VisitedNodeNames.Contains(this.Name)) {
+                sbSteps.AppendLine($"\t\t\trunner.SetVisitedState(VisitedNodeName::{this.Name});");
+            }
+            if (this.compiler.VisitedCountNodeNames.Contains(this.Name))
+            {
+                sbSteps.AppendLine($"\t\t\trunner.IncrementVisitCount(VisitCountedNodeName::{this.Name});");
+            }
             if (tags.Any())
             {
                 sbSteps.AppendLine("\t\t\t// Node Tags:");

@@ -198,6 +198,19 @@ namespace ThreadBare
                 var p = ps?.Pop();
                 if (!string.IsNullOrEmpty(p)) { compiledParameters.Add(p); }
             }
+            if(functionName == "visited")
+            {
+                var nodeName = compiledParameters.First().Trim().Trim('"');
+                this.compiler.VisitedNodeNames.Add(nodeName);
+                compiledParameters[0] = $"VisitedNodeName::{nodeName}";
+                functionName = "runner.VisitedNode";
+                
+            } else if (functionName == "visited_count") {
+                var nodeName = compiledParameters.First().Trim().Trim('"');
+                this.compiler.VisitedCountNodeNames.Add(nodeName);
+                compiledParameters[0] = $"VisitCountedNodeName::{nodeName}";
+                functionName = "runner.VisitedCountNode";
+            }
 
             var outputText = $"{functionName}({string.Join(", ", compiledParameters)})";
             ps?.Push(outputText);
