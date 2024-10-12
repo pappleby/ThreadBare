@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.6.33829.357
 MinimumVisualStudioVersion = 15.0.26124.0
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThreadBare", "ThreadBare\ThreadBare.csproj", "{AD27C45B-8176-4608-A84A-D2A92A7D3E84}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ThreadBareCompiler", "ThreadBareCompiler\ThreadBareCompiler.csproj", "{AD27C45B-8176-4608-A84A-D2A92A7D3E84}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

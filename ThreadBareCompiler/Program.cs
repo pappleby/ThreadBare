@@ -11,8 +11,8 @@ namespace ThreadBare
     {
         static void Main(string[] args)
         {
-            //debugmain();
-            //return;
+            // debugmain();
+            // return;
 
             var compileCommand = new RootCommand("Compiles a directory of ys into .cpp / .h files");
             var inputOption = new Option<DirectoryInfo>(

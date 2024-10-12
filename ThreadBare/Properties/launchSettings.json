@@ -1,9 +1,0 @@
-{
-  "profiles": {
-    "ThreadBare": {
-      "commandName": "Project",
-      "commandLineArgs": "-ys \\\\wsl.localhost\\Ubuntu\\home\\kufu91\\template\\src\\ysScripts ",
-      "remoteDebugEnabled": false
-    }
-  }
-}
