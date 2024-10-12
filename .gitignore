@@ -155,3 +155,5 @@ YarnSpinner.Tests/coverage/
 
 # Folders marked as containing non-public data
 *DoNotCommit/
+
+publish/*
