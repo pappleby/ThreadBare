@@ -68,9 +68,9 @@ namespace ThreadBare
             sb.AppendLine("""
                 #ifndef SCRIPT_YARN_H
                 #define SCRIPT_YARN_H
-
-                namespace ThreadBare {
                 """);
+            sb.AppendLine("#include \"plural_select.h\"");
+            sb.AppendLine("namespace ThreadBare {");
             sb.AppendLine("\tclass TBScriptRunner;");
             sb.AppendLine("\tclass NodeState;");
             sb.AppendLine($"\tconstexpr static int MAX_OPTIONS_COUNT = {MaxOptionsCount};");
