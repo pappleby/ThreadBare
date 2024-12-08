@@ -12,7 +12,7 @@ namespace ThreadBare
 {
     internal class Compiler : YarnSpinnerParserBaseListener
     {
-        string HeaderName = "script.yarn.h";
+        public string? IncludeHeaderName = null;
         string ScriptNamespace = "ThreadBare";
         
         Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
@@ -52,7 +52,11 @@ namespace ThreadBare
         {
             var sb = new StringBuilder();
             // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
-            sb.AppendLine($"""#include "script.h" """);
+            if(!string.IsNullOrWhiteSpace(IncludeHeaderName)){
+                sb.AppendLine($"""#include "{IncludeHeaderName}" """);
+            }
+            sb.AppendLine($"""#include "threadbare.h" """);
+            sb.AppendLine("#include <bn_math.h>");
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
             foreach ( var node in Nodes.Values )
@@ -73,12 +77,12 @@ namespace ThreadBare
             sb.AppendLine("namespace ThreadBare {");
             sb.AppendLine("\tclass TBScriptRunner;");
             sb.AppendLine("\tclass NodeState;");
-            sb.AppendLine($"\tconstexpr static int MAX_OPTIONS_COUNT = {MaxOptionsCount};");
-            sb.AppendLine($"\tconstexpr static int MAX_TAGS_COUNT = {Math.Max(LineTags.Count(), OptionTags.Count())};");
-            sb.AppendLine($"\tconstexpr static int MAX_TAG_PARAMS_COUNT = {LineOrOptionTagParamCount};");
+            sb.AppendLine($"\tconstexpr static int MAX_OPTIONS_COUNT = {Math.Max(1, MaxOptionsCount)};");
+            sb.AppendLine($"\tconstexpr static int MAX_TAGS_COUNT = {Math.Max(1, Math.Max(LineTags.Count(), OptionTags.Count()))};");
+            sb.AppendLine($"\tconstexpr static int MAX_TAG_PARAMS_COUNT = {Math.Max(1, LineOrOptionTagParamCount)};");
 
-            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {MarkupsInLineCount};");
-            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {MarkupParamsInLineCount};");
+            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {Math.Max(1, MarkupsInLineCount)};");
+            sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {Math.Max(1, MarkupParamsInLineCount)};");
 
             // Need to round up to the nearest 8
             var vnc = VisitedNodeNames.Count();
@@ -321,8 +325,9 @@ namespace ThreadBare
             sb.Append(sbSteps.ToString());
             
             sb.AppendLine("\t\t\trunner.EndNode();");
+            sb.AppendLine("\t\t\treturn;");
             sb.AppendLine("\t\tdefault:");
-            sb.AppendLine("\t\t\t//todo, throw error: invalid node step");
+            sb.AppendLine($"\t\t\tBN_ASSERT(false, \"invalid node step: \", nodeState.nextStep, \" in node {Name}\");");
             sb.AppendLine("\t\t\tbreak;");
             sb.AppendLine("\t\t}");
             sb.AppendLine("\t}");
@@ -811,7 +816,7 @@ namespace ThreadBare
                 sb.AppendLine($"\t\tcase {waitContinueLabel}:\n");
                 return sb.ToString();
             }
-            var result = $"\t\t\t{commandName}({string.Join(", ", args)});\n\n";
+            var result = $"\t\t\trunner.variables.{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
         public void AddTag(Compiler compiler, string text)

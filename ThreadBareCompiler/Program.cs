@@ -30,23 +30,29 @@ namespace ThreadBare
                     description: "Output directory for header files (default: current directory)",
                     getDefaultValue: () => new DirectoryInfo(Environment.CurrentDirectory)
             );
+            var includeHOption = new Option<FileInfo?>(
+                    name: "-include",
+                    description: "Header to include in generated cpp files)",
+                    getDefaultValue: () => null
+            );
 
             compileCommand.AddOption(inputOption.ExistingOnly());
             compileCommand.AddOption(outputHOption);
             compileCommand.AddOption(outputCppOption.ExistingOnly());
+            compileCommand.AddOption(includeHOption);
 
-            compileCommand.SetHandler(CompileFiles, inputOption, outputHOption, outputCppOption);
+            compileCommand.SetHandler(CompileFiles, inputOption, outputHOption, outputCppOption, includeHOption);
 
             compileCommand.Invoke(args);
         }
 
-        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir) { 
+        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir, FileInfo? includeH) { 
 
             var searchSubs = new EnumerationOptions { RecurseSubdirectories = true };
             var ysFiles = ysDir.EnumerateFiles("*.yarn", searchSubs);
             var oldHFiles = hDir.EnumerateFiles("*.yarn.h", searchSubs);
             var oldCppFiles = cppDir.EnumerateFiles("*.yarn.cpp", searchSubs);
-            var compiler = new Compiler();
+            var compiler = new Compiler(){IncludeHeaderName = includeH?.Name};
 
             foreach (var ysFile in ysFiles)
             {

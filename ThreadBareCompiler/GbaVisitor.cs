@@ -210,6 +210,9 @@ namespace ThreadBare
                 this.compiler.VisitedCountNodeNames.Add(nodeName);
                 compiledParameters[0] = $"VisitCountedNodeName::{nodeName}";
                 functionName = "runner.VisitedCountNode";
+            } else
+            {
+                functionName = "runner.variables." + functionName;
             }
 
             var outputText = $"{functionName}({string.Join(", ", compiledParameters)})";
