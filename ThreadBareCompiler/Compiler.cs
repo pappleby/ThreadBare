@@ -937,6 +937,8 @@ namespace ThreadBare
         public string jumpToLabel = "";
         public string? condition;
         public string? onceLabel = null;
+        public int complexityCount = 0;
+        public bool isLineGroupItem = false;
 
         List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
@@ -1056,6 +1058,13 @@ namespace ThreadBare
         public string Compile(Node node)
         {
             return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
+        }
+    }
+    internal class SendLineGroup : Step
+    {
+        public string Compile(Node node)
+        {
+            return "\t\t\trunner.state = LineGroup;\n\t\t\treturn;\n\n";
         }
     }
     internal class PluralMarkup : Expression

@@ -346,6 +346,138 @@ namespace ThreadBare
             }
         }
 
+
+        public override int VisitLine_group_statement(YarnSpinnerParser.Line_group_statementContext context)
+        {
+            // Idea: make a bunch of options without any text in them
+            // move the text for each line group item into the jump to
+
+            // instead of returning to the user, have the runner pick the option. 
+            // Possibly need to add complexity score to each option 
+            // and maybe store the count of how many times each option was picked? (is there a way to make this not a nightmare)
+
+            var cn = this.compiler.CurrentNode!;
+            string endOfGroupLabel = cn.RegisterLabel("group_end");
+
+            var labels = new List<string>();
+            var onceLabels = new Dictionary<int, string>();
+            int optionCount = 0;
+
+            cn.AddStep(new StartOptions());
+
+            foreach (var shortcut in context.line_group_item())
+            {
+                var optionStep = new Option { index = optionCount, isLineGroupItem = true };
+                cn.AddStep(optionStep);
+
+                var lineStatement = shortcut.line_statement();
+
+                // Generate the name of internal label that we'll jump to if
+                // this option is selected. We'll emit the label itself later.
+                string optionDestinationLabel = this.compiler.CurrentNode?.RegisterLabel($"shortcutoption_{this.compiler.CurrentNode.Name ?? "node"}_{optionCount + 1}") ?? "";
+                labels.Add(optionDestinationLabel);
+                optionStep.jumpToLabel = optionDestinationLabel;
+
+                // This line statement may have a condition on it. If it does,
+                // emit code that evaluates the condition, and add a flag on the
+                // 'Add Option' instruction that indicates that a condition
+                // exists.
+                var condition = shortcut.line_statement().line_condition();
+                string? onceVariableName = null;
+                if (!(condition?.IsEmpty ?? true))
+                {
+                    var conditionCount = 0;
+
+                    ExpressionContext conditionExpressionContext;
+
+                    if (condition is LineOnceConditionContext lineOnceConditionContext)
+                    {
+                        conditionCount += 1;
+                        onceVariableName = this.compiler.RegisterOnceVariable();
+                        optionStep.onceLabel = onceVariableName;
+                        onceLabels[labels.Count - 1] = onceVariableName;
+                        conditionExpressionContext = lineOnceConditionContext.expression();
+                    }
+                    else if (condition is LineConditionContext lineConditionContext)
+                    {
+                        conditionExpressionContext = lineConditionContext.expression();
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Unknown line condition type");
+                    }
+
+                    if (conditionExpressionContext != null)
+                    {
+                        conditionCount += GetBooleanOperatorCountInExpression(conditionExpressionContext);
+                        optionStep.complexityCount = conditionCount;
+                        // Evaluate the condition, and leave it on the stack
+                        this.Visit(conditionExpressionContext);
+
+                        optionStep.condition = cn.parameters?.Pop();
+                        cn.FlushParamaters();
+                    }
+                }
+                // Store hashtags somewhere? handle later?
+                optionCount++;
+            }
+
+            cn.AddStep(new SendLineGroup());
+
+            // We'll now emit the labels and code associated with each option.
+            optionCount = 0;
+            foreach (var shortcut in context.line_group_item())
+            {
+                // Emit the label for this option's code
+                cn.AddStep(new Label { label = labels[optionCount] });
+
+                if (onceLabels.TryGetValue(optionCount, out var onceLabel))
+                {
+                    cn.AddStep(new OnceIsSeen { variableName = onceLabel });
+                }
+                var hashtags = shortcut.line_statement().hashtag() ?? [];
+                var lineIDTag = Compiler.GetLineIDTag(hashtags);
+                string lineID;
+                if (lineIDTag == null)
+                {
+                    lineID = "line" + l.ToString();
+                    l++;
+                }
+                else
+                {
+                    lineID = lineIDTag.text.Text;
+                }
+                var outputLine = new Line { lineID = lineID };
+                foreach (var hashtag in hashtags)
+                {
+                    var tag = hashtag.HASHTAG_TEXT().GetText();
+                    outputLine.AddTag(this.compiler, tag);
+                }
+
+                // This should be split up into individual expressions, but good enough to start
+                cn.AddStep(outputLine);
+                this.GenerateCodeForExpressionsInFormattedText(shortcut.line_statement().line_formatted_text().children);
+                // Run through all the children statements of the shortcut
+                // option.
+                foreach (var child in shortcut.statement())
+                {
+                    this.Visit(child);
+                }
+
+                // Jump to the end of this shortcut option group.
+                cn.AddStep(new GoTo { targetLabel = endOfGroupLabel });
+
+                optionCount++;
+            }
+
+            // We made it to the end! Mark the end of the group, so we can jump
+            // to it.
+            cn.AddStep(new Label { label = endOfGroupLabel });
+
+            return 0;
+        }
+
+
         // for the shortcut options (-> line of text <<if expression>> indent
         // statements dedent)+
         public override int VisitShortcut_option_statement(YarnSpinnerParser.Shortcut_option_statementContext context)
@@ -807,7 +939,33 @@ namespace ThreadBare
             /// operation.</summary>
             Modulo,
         }
+        /// <summary>
+        /// Gets the total number of boolean operations - ands, ors, nots, and
+        /// xors - present in an expression and its sub-expressions.
+        /// </summary>
+        /// <param name="context">An expression.</param>
+        /// <returns>The total number of boolean operations in the
+        /// expression.</returns>
+        private static int GetBooleanOperatorCountInExpression(ParserRuleContext context)
+        {
+            var subtreeCount = 0;
 
+            if (context is ExpAndOrXorContext || context is ExpNotContext)
+            {
+                // This expression is a boolean expression.
+                subtreeCount += 1;
+            }
+
+            foreach (var child in context.children)
+            {
+                if (child is ParserRuleContext childContext)
+                {
+                    subtreeCount += GetBooleanOperatorCountInExpression(childContext);
+                }
+            }
+
+            return subtreeCount;
+        }
     }
 
 }

@@ -90,11 +90,11 @@ namespace ThreadBare
                 ---
                 <<declare $test to 5>>
 
-                -> option 1
+                => option 1
                     option text 1
-                -> option 2 <<once>>
+                => option 2 <<once>>
                     option text 2
-                -> option 3 <<once if $test < 5>>
+                => option 3 <<once if $test < 5>>
                     option text 3
 
 
