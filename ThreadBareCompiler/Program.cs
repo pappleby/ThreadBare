@@ -9,8 +9,8 @@ namespace ThreadBare
     {
         static void Main(string[] args)
         {
-            debugmain();
-            return;
+            //debugmain();
+            //return;
 
             var compileCommand = new RootCommand("Compiles a directory of ys into .cpp / .h files");
             var inputOption = new Option<DirectoryInfo>(
@@ -217,13 +217,20 @@ namespace ThreadBare
 
                 Finally, we can use the "jump" command to go to a different node! Let's do that now!
 
+                <<detour OtherNode>>
+                And now we're back
+                Now let's jump to that same node
                 <<jump OtherNode>>
+                I should never run!
                 ===
+
                 title: OtherNode
                 ---
                 Here we are in a different node! Nodes let you divide up your content into different blocks, which makes it easier to manage.
 
                 We're all done! Try changing the text in the editor to the left, and clicking Test again!
+                <<return>>
+                I should never be seen!
                 ===
                 """");
 

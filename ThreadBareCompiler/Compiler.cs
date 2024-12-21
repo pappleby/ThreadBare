@@ -902,6 +902,16 @@ namespace ThreadBare
             return result;
         }
     }
+
+    internal class FinishNode : Step
+    {
+        public string Compile(Node node)
+        {
+            var result = "\t\t\trunner.EndNode();\n\t\t\treturn;\n\n";
+            return result;
+        }
+    }
+
     internal class GoTo : Step
     {
         public string targetLabel = "";

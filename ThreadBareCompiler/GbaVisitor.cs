@@ -694,6 +694,13 @@ namespace ThreadBare
             // this.Visit(context.expression());
         }
 
+        public override int VisitReturn_statement([NotNull] Return_statementContext context)
+        {
+            var outputReturnStep = new FinishNode { };
+            compiler.CurrentNode!.AddStep(outputReturnStep);
+            return 0;
+        }
+
         // TODO: figure out a better way to do operators
         internal static readonly Dictionary<int, Operator> TokensToOperators = new Dictionary<int, Operator>
         {
