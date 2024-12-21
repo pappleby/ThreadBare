@@ -1,17 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Text;
-using System.Text.RegularExpressions;
+﻿using System.Globalization;
 using Antlr4.Runtime;
 using Antlr4.Runtime.Misc;
 using Antlr4.Runtime.Tree;
 using global::Yarn.Compiler;
-using global::Yarn;
-using static Antlr4.Runtime.Atn.SemanticContext;
-using static Yarn.Instruction.Types;
-using static System.Runtime.InteropServices.JavaScript.JSType;
+using static Yarn.Compiler.YarnSpinnerParser;
 
 namespace ThreadBare
 {
@@ -83,12 +75,29 @@ namespace ThreadBare
             this.compiler.CurrentNode?.AddStep(outputLine);
             var expressionCount = this.GenerateCodeForExpressionsInFormattedText(context.line_formatted_text().children);
             base.VisitLine_statement(context);
-            if (context.line_condition()?.expression() != null)
+            var condition = context.line_condition();
+            ExpressionContext conditionExpressionContext;
+            if (!(condition?.IsEmpty ?? true))
             {
-                // Evaluate the condition, and leave it on the stack
-                this.Visit(context.line_condition()?.expression());
-
-                outputLine.condition = cn?.parameters?.Pop();
+                if (condition is LineOnceConditionContext lineOnceConditionContext)
+                {
+                    outputLine.once = true;
+                    conditionExpressionContext = lineOnceConditionContext.expression();
+                }
+                else if (condition is LineConditionContext lineConditionContext)
+                {
+                    conditionExpressionContext = lineConditionContext.expression();
+                }
+                else
+                {
+                    throw new System.ArgumentException("Unknown line condition type");
+                }
+                if (conditionExpressionContext != null)
+                {
+                    // Evaluate the condition, and leave it on the stack
+                    this.Visit(conditionExpressionContext);
+                    outputLine.condition = cn?.parameters?.Pop();
+                }
             }
             cn?.FlushParamaters();
             return 0;
@@ -144,22 +153,27 @@ namespace ThreadBare
             return 0;
         }
 
+        public override int VisitDetourToExpression([NotNull] YarnSpinnerParser.DetourToExpressionContext context)
+        {
+            // could probably do this by getting the hash of the expression result and using that in a node hash -> node function map (same as jump to expression)
+            throw new System.NotImplementedException();
+        }
+
+        public override int VisitDetourToNodeName([NotNull] YarnSpinnerParser.DetourToNodeNameContext context)
+        {
+            var cn = this.compiler.CurrentNode;
+            var destination = context.destination.Text;
+            var d = new Detour();
+            d.Target = destination;
+            cn?.AddStep(d);
+            return 0;
+        }
+
         // semi-free form text that gets passed along to the game for things
         // like <<turn fred left>> or <<unlockAchievement FacePlant>>
         public override int VisitCommand_statement(YarnSpinnerParser.Command_statementContext context)
         {
             var cn = this.compiler.CurrentNode;
-
-            // placing detour handling here instead of in compiler since I suspect this will be parsed out in v3
-            var commandText = context.command_formatted_text().GetText();
-            if(commandText.StartsWith("detour "))
-            {
-                var d = new Detour();
-                var destination = commandText.Substring("detour ".Length);
-                d.Target = destination;
-                cn?.AddStep(d);
-                return 0;
-            }
 
             var c = new Command();
 
@@ -180,9 +194,9 @@ namespace ThreadBare
                     c.AddCalculatedExpression(expression);
                 }
             }
-            
+
             cn?.AddStep(c);
-            
+
             return 0;
         }
 
@@ -198,19 +212,22 @@ namespace ThreadBare
                 var p = ps?.Pop();
                 if (!string.IsNullOrEmpty(p)) { compiledParameters.Add(p); }
             }
-            if(functionName == "visited")
+            if (functionName == "visited")
             {
                 var nodeName = compiledParameters.First().Trim().Trim('"');
                 this.compiler.VisitedNodeNames.Add(nodeName);
                 compiledParameters[0] = $"VisitedNodeName::{nodeName}";
                 functionName = "runner.VisitedNode";
-                
-            } else if (functionName == "visited_count") {
+
+            }
+            else if (functionName == "visited_count")
+            {
                 var nodeName = compiledParameters.First().Trim().Trim('"');
                 this.compiler.VisitedCountNodeNames.Add(nodeName);
                 compiledParameters[0] = $"VisitCountedNodeName::{nodeName}";
                 functionName = "runner.VisitedCountNode";
-            } else
+            }
+            else
             {
                 functionName = "runner.variables." + functionName;
             }
@@ -238,45 +255,82 @@ namespace ThreadBare
 
             //// handle the if
             var ifClause = context.if_clause();
-            this.GenerateClause(endOfIfStatementLabel, ifClause, ifClause.statement(), ifClause.expression());
+            this.GenerateClause(endOfIfStatementLabel, ifClause.statement(), ifClause.expression());
 
             // all elseifs
             foreach (var elseIfClause in context.else_if_clause())
             {
-                this.GenerateClause(endOfIfStatementLabel, elseIfClause, elseIfClause.statement(), elseIfClause.expression());
+                this.GenerateClause(endOfIfStatementLabel, elseIfClause.statement(), elseIfClause.expression());
             }
 
             // the else, if there is one
             var elseClause = context.else_clause();
             if (elseClause != null)
             {
-                this.GenerateClause(endOfIfStatementLabel, elseClause, elseClause.statement(), null);
+                this.GenerateClause(endOfIfStatementLabel, elseClause.statement(), null);
             }
             this.compiler.CurrentNode?.AddStep(new Label { label = endOfIfStatementLabel });
 
             return 0;
         }
 
-        private void GenerateClause(string jumpLabel, ParserRuleContext clauseContext, YarnSpinnerParser.StatementContext[] children, YarnSpinnerParser.ExpressionContext expression)
+        public override int VisitOnce_statement([NotNull] Once_statementContext context)
         {
+            //// label to give us a jump point for when the once finishes
+            var endOfOnceStatementLabel = this.compiler.CurrentNode!.RegisterLabel();
 
+            // TODO: Handle the once part of the variable (should be a mostly stable (either base on tag or how many once statements into the current node there are))
+            var onceVariableName = this.compiler.RegisterOnceVariable();
+            var once_condition_expression = context.once_primary_clause().expression();
+
+            var clauseStatement = context.once_primary_clause().statement();
+            this.GenerateClause(endOfOnceStatementLabel, clauseStatement, once_condition_expression, onceVariableName);
+
+            // the else, if there is one
+            var elseClause = context.once_alternate_clause()?.statement();
+            if (elseClause != null)
+            {
+                this.GenerateClause(endOfOnceStatementLabel, elseClause, null);
+            }
+
+            this.compiler.CurrentNode?.AddStep(new Label { label = endOfOnceStatementLabel });
+
+            return 0;
+        }
+
+        private void GenerateClause(string jumpLabel, StatementContext[] children, ExpressionContext? expression, string? onceVariableName = null)
+        {
+            var cn = this.compiler.CurrentNode!;
             string endOfClauseLabel = this.compiler.CurrentNode?.RegisterLabel("skipclause") ?? "";
 
+            var testExpression = "";
             // handling the expression (if it has one) will only be called on
-            // ifs and elseifs
+            // ifs, elseifs, and once's with a condition
             if (expression != null)
             {
                 // Code-generate the expression
                 this.Visit(expression);
-                var cn = this.compiler.CurrentNode;
-                var ps = cn?.parameters;
-                var testExpression = ps?.Pop() ?? "true";
-                cn?.FlushParamaters();
 
+                var ps = cn.parameters;
+                testExpression += ps.Pop();
+                cn.FlushParamaters();
+
+            }
+            if (!string.IsNullOrEmpty(onceVariableName))
+            {
+                // Todo: replace once being a variable with an item in a bitfield
+                testExpression = $"!runner.variables.{onceVariableName}" + (expression != null ? $"&&{testExpression}" : "");
+            }
+            if (!string.IsNullOrEmpty(testExpression))
+            {
                 var clause = new If { expression = testExpression, jumpIfFalseLabel = endOfClauseLabel };
-                cn?.AddStep(clause);
+                cn.AddStep(clause);
             }
 
+            if (!string.IsNullOrEmpty(onceVariableName))
+            {
+                cn.AddStep(new OnceIsSeen { variableName = onceVariableName });
+            }
             // running through all of the children statements
             foreach (var child in children)
             {
@@ -299,11 +353,11 @@ namespace ThreadBare
             string endOfGroupLabel = this.compiler.CurrentNode?.RegisterLabel("group_end") ?? "";
 
             var labels = new List<string>();
-
+            var onceLabels = new Dictionary<int, string>();
             int optionCount = 0;
-            var cn = this.compiler.CurrentNode;
+            var cn = this.compiler.CurrentNode!;
 
-            cn?.AddStep(new StartOptions());
+            cn.AddStep(new StartOptions());
 
             // For each option, create an internal destination label that, if
             // the user selects the option, control flow jumps to. Then,
@@ -312,8 +366,8 @@ namespace ThreadBare
             // options.
             foreach (var shortcut in context.shortcut_option())
             {
-                var optionStep = new Option{ index= optionCount };
-                cn?.AddStep(optionStep);
+                var optionStep = new Option { index = optionCount };
+                cn.AddStep(optionStep);
 
                 // Generate the name of internal label that we'll jump to if
                 // this option is selected. We'll emit the label itself later.
@@ -325,20 +379,43 @@ namespace ThreadBare
                 // emit code that evaluates the condition, and add a flag on the
                 // 'Add Option' instruction that indicates that a condition
                 // exists.
-                if (shortcut.line_statement()?.line_condition()?.expression() != null)
+                var condition = shortcut.line_statement().line_condition();
+                string? onceVariableName = null;
+                if (!(condition?.IsEmpty ?? true))
                 {
-                    // Evaluate the condition, and leave it on the stack
-                    this.Visit(shortcut.line_statement().line_condition().expression());
+                    ExpressionContext conditionExpressionContext;
 
-                    optionStep.condition = cn?.parameters?.Pop();
-                    cn?.FlushParamaters();
+                    if (condition is LineOnceConditionContext lineOnceConditionContext)
+                    {
+                        onceVariableName = this.compiler.RegisterOnceVariable();
+                        optionStep.onceLabel = onceVariableName;
+                        onceLabels[labels.Count - 1] = onceVariableName;
+                        conditionExpressionContext = lineOnceConditionContext.expression();
+                    }
+                    else if (condition is LineConditionContext lineConditionContext)
+                    {
+                        conditionExpressionContext = lineConditionContext.expression();
+                    }
+                    else
+                    {
+                        throw new ArgumentException("Unknown line condition type");
+                    }
+
+                    if (conditionExpressionContext != null)
+                    {
+                        // Evaluate the condition, and leave it on the stack
+                        this.Visit(conditionExpressionContext);
+
+                        optionStep.condition = cn.parameters?.Pop();
+                        cn.FlushParamaters();
+                    }
                 }
                 foreach (var hashtag in shortcut.line_statement()?.hashtag() ?? [])
                 {
                     var tag = hashtag.HASHTAG_TEXT().GetText();
                     optionStep.AddTag(this.compiler, tag);
                 }
-                
+
                 // We can now prepare and add the option.
 
                 // Start by figuring out the text that we want to add. This will
@@ -358,7 +435,7 @@ namespace ThreadBare
             }
 
             // All of the options that we intend to show are now ready to go.
-            cn?.AddStep(new SendOptions());
+            cn.AddStep(new SendOptions());
 
 
             // We'll now emit the labels and code associated with each option.
@@ -366,7 +443,12 @@ namespace ThreadBare
             foreach (var shortcut in context.shortcut_option())
             {
                 // Emit the label for this option's code
-                cn?.AddStep(new Label { label = labels[optionCount] });
+                cn.AddStep(new Label { label = labels[optionCount] });
+
+                if (onceLabels.TryGetValue(optionCount, out var onceLabel))
+                {
+                    cn.AddStep(new OnceIsSeen { variableName = onceLabel });
+                }
 
                 // Run through all the children statements of the shortcut
                 // option.
@@ -376,7 +458,7 @@ namespace ThreadBare
                 }
 
                 // Jump to the end of this shortcut option group.
-                cn?.AddStep(new GoTo { targetLabel = endOfGroupLabel });
+                cn.AddStep(new GoTo { targetLabel = endOfGroupLabel });
 
                 optionCount++;
             }
@@ -385,7 +467,7 @@ namespace ThreadBare
 
             // We made it to the end! Mark the end of the group, so we can jump
             // to it.
-            cn?.AddStep(new Label { label = endOfGroupLabel });
+            cn.AddStep(new Label { label = endOfGroupLabel });
             return 0;
         }
 
@@ -537,7 +619,8 @@ namespace ThreadBare
             if (numberString.Contains('.'))
             {
                 this.compiler.CurrentNode?.AddParameter($"bn::fixed({numberString})");
-            } else
+            }
+            else
             {
                 this.compiler.CurrentNode?.AddParameter(numberString);
             }
@@ -580,13 +663,6 @@ namespace ThreadBare
         {
             this.Visit(context.function_call());
             return 0;
-        }
-
-        // null value
-        public override int VisitValueNull(YarnSpinnerParser.ValueNullContext context)
-        {
-            // shouldn't have any nulls
-            throw new NotImplementedException();
         }
         #endregion
 

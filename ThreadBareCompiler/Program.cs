@@ -1,8 +1,6 @@
 ﻿using Antlr4.Runtime;
 using Antlr4.Runtime.Tree;
-using System;
 using System.CommandLine;
-using System.IO;
 using Yarn.Compiler;
 
 namespace ThreadBare
@@ -11,8 +9,8 @@ namespace ThreadBare
     {
         static void Main(string[] args)
         {
-            // debugmain();
-            // return;
+            debugmain();
+            return;
 
             var compileCommand = new RootCommand("Compiles a directory of ys into .cpp / .h files");
             var inputOption = new Option<DirectoryInfo>(
@@ -46,17 +44,19 @@ namespace ThreadBare
             compileCommand.Invoke(args);
         }
 
-        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir, FileInfo? includeH) { 
+        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir, FileInfo? includeH)
+        {
 
             var searchSubs = new EnumerationOptions { RecurseSubdirectories = true };
             var ysFiles = ysDir.EnumerateFiles("*.yarn", searchSubs);
             var oldHFiles = hDir.EnumerateFiles("*.yarn.h", searchSubs);
             var oldCppFiles = cppDir.EnumerateFiles("*.yarn.cpp", searchSubs);
-            var compiler = new Compiler(){IncludeHeaderName = includeH?.Name};
+            var compiler = new Compiler() { IncludeHeaderName = includeH?.Name };
 
             foreach (var ysFile in ysFiles)
             {
-                if (ysFile == null || !ysFile.Exists) {
+                if (ysFile == null || !ysFile.Exists)
+                {
                     continue;
                 }
                 var compiledCpp = CompileFile(compiler, ysFile);
@@ -84,10 +84,25 @@ namespace ThreadBare
 
         static void debugmain()
         {
-            ICharStream input = CharStreams.fromstring(""""
+            ICharStream input = CharStreams.fromString(""""
                 title: Start
                 tags: #camera2 nodetagtest:conductor_cabin
                 ---
+                <<declare $test to 5>>
+
+                -> option 1
+                    option text 1
+                -> option 2 <<once>>
+                    option text 2
+                -> option 3 <<once if $test < 5>>
+                    option text 3
+
+
+                nop
+                nop 
+                nop
+                Line with condition <<once if $test < 5>>
+                Line only once <<once>>
 
                 this is a test with replacement [plural value={$pie_count} other="% pies % text" /]
                 this is a plural test [plural value={$pie_count} one="A pie" other="Some pies" /]

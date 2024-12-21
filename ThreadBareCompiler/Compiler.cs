@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using Antlr4.Runtime.Misc;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 using Yarn;
 using Yarn.Compiler;
 
@@ -14,12 +10,13 @@ namespace ThreadBare
     {
         public string? IncludeHeaderName = null;
         string ScriptNamespace = "ThreadBare";
-        
+
         Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
         HashSet<string> NodeNames = new HashSet<string>();
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
+        public HashSet<string> OnceVariables = new HashSet<string>();
         public int LineOrOptionTagParamCount = 0;
         public HashSet<string> MarkupNames = new HashSet<string>();
         public int MarkupsInLineCount = 0;
@@ -47,24 +44,31 @@ namespace ThreadBare
 
             return null;
         }
+        internal string RegisterOnceVariable()
+        {
+            var newName = $"once{OnceVariables.Count}";
+            OnceVariables.Add(newName);
+            return newName;
+        }
 
         public string Compile()
         {
             var sb = new StringBuilder();
             // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
-            if(!string.IsNullOrWhiteSpace(IncludeHeaderName)){
+            if (!string.IsNullOrWhiteSpace(IncludeHeaderName))
+            {
                 sb.AppendLine($"""#include "{IncludeHeaderName}" """);
             }
             sb.AppendLine($"""#include "threadbare.h" """);
             sb.AppendLine("#include <bn_math.h>");
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
-            foreach ( var node in Nodes.Values )
+            foreach (var node in Nodes.Values)
             {
                 sb.Append(node.Compile());
             }
             sb.AppendLine("}");
-            return sb.ToString(); 
+            return sb.ToString();
         }
         public string CompileScriptHeader()
         {
@@ -86,7 +90,7 @@ namespace ThreadBare
 
             // Need to round up to the nearest 8
             var vnc = VisitedNodeNames.Count();
-            vnc = Math.Max(8, ((8-(vnc % 8)) % 8) + vnc);
+            vnc = Math.Max(8, ((8 - (vnc % 8)) % 8) + vnc);
             sb.AppendLine($"\tconstexpr static int VISITED_NODE_COUNT = {vnc};");
             // Need at least 1 for array storage
             sb.AppendLine($"\tconstexpr static int VISIT_COUNT_NODE_COUNT = {Math.Max(1, VisitedCountNodeNames.Count())};");
@@ -100,11 +104,11 @@ namespace ThreadBare
             sb.AppendLine($"\tenum class NodeTag : int {{ {joinedNodeTags} }};");
 
             var vnn = string.Join(", ", VisitedNodeNames);
-            sb.AppendLine($"\tenum class VisitedNodeName : int {{ {vnn} }};"); 
-            
+            sb.AppendLine($"\tenum class VisitedNodeName : int {{ {vnn} }};");
+
             var vcnn = string.Join(", ", VisitedCountNodeNames);
             sb.AppendLine($"\tenum class VisitCountedNodeName : int {{ {vcnn} }};");
-            
+
 
             var joinedTags = string.Join(", ", LineTags.Concat(OptionTags));
             sb.AppendLine("\n\t// tags:");
@@ -130,10 +134,10 @@ namespace ThreadBare
         {
             NodeNames.UnionWith(Nodes.Keys);
         }
-        public void ClearNodes() 
+        public void ClearNodes()
         {
-                SaveNodeNames();
-                Nodes.Clear();
+            SaveNodeNames();
+            Nodes.Clear();
         }
         /// <summary>
         /// we have found a new node set up the currentNode var ready to
@@ -151,10 +155,14 @@ namespace ThreadBare
         /// <inheritdoc />
         public override void ExitNode(YarnSpinnerParser.NodeContext context)
         {
-            this.Nodes.Add(this.CurrentNode.Name, this.CurrentNode);
+            this.Nodes.Add(this.CurrentNode!.Name, this.CurrentNode);
             this.CurrentNode = null;
         }
+        public override void ExitTitle_header([NotNull] YarnSpinnerParser.Title_headerContext context)
+        {
 
+            this.CurrentNode!.Name = context.title.Text;
+        }
 
         /// <summary> 
         /// have finished with the header so about to enter the node body
@@ -172,12 +180,6 @@ namespace ThreadBare
             // That is, it's not null, because a header was provided, but
             // it was written as an empty line.
             var headerValue = context.header_value?.Text ?? String.Empty;
-
-            if (headerKey.Equals("title", StringComparison.InvariantCulture))
-            {
-                // Set the name of the node
-                this.CurrentNode.Name = headerValue;
-            }
 
             if (headerKey.Equals("tags", StringComparison.InvariantCulture))
             {
@@ -216,10 +218,7 @@ namespace ThreadBare
             {
                 gbaVisitor.Visit(statement);
             }
-            
         }
-
-
     }
     internal class Node
     {
@@ -236,6 +235,7 @@ namespace ThreadBare
         List<string> labels = new List<string>();
         public bool isVisited = false;
         public bool isVisitCounted = false;
+        public int onceCount = 0;
         /// <summary>
         /// Generates a unique label name to use in the program.
         /// </summary>
@@ -248,7 +248,14 @@ namespace ThreadBare
             this.labels.Add(label);
             return label;
         }
-        public void AddParameter(string p) { 
+        internal string RegisterOnceLabel(string commentary = "")
+        {
+            var label = this.Name + "_once_" + this.onceCount++ + commentary;
+            this.compiler.OnceVariables.Add(label);
+            return label;
+        }
+        public void AddParameter(string p)
+        {
             parameters.Push(p);
         }
         public string FlushParamaters()
@@ -261,11 +268,12 @@ namespace ThreadBare
         public IExpressionDestination? GetCurrentLine()
         {
             var lastStep = this.Steps.LastOrDefault();
-            if (lastStep is IExpressionDestination) { 
-                return lastStep as IExpressionDestination; 
+            if (lastStep is IExpressionDestination)
+            {
+                return lastStep as IExpressionDestination;
             }
             return null;
-        } 
+        }
         public void AddStep(Step step)
         {
             Steps.Add(step);
@@ -286,7 +294,8 @@ namespace ThreadBare
             sbSteps.AppendLine("\t\tswitch (nodeState.nextStep)");
             sbSteps.AppendLine("\t\t{");
             sbSteps.AppendLine("\t\tcase nodestart:");
-            if (this.compiler.VisitedNodeNames.Contains(this.Name)) {
+            if (this.compiler.VisitedNodeNames.Contains(this.Name))
+            {
                 sbSteps.AppendLine($"\t\t\trunner.SetVisitedState(VisitedNodeName::{this.Name});");
             }
             if (this.compiler.VisitedCountNodeNames.Contains(this.Name))
@@ -303,14 +312,15 @@ namespace ThreadBare
                     var joinedTagParams = string.Join(", ", tags.SelectMany(t => t.Params));
                     sbSteps.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ nodeState.tagParams.emplace_back(p);}}");
                 }
-            sbSteps.AppendLine();
+                sbSteps.AppendLine();
             }
 
             foreach (var step in Steps)
             {
                 sbSteps.Append(step.Compile(this));
             }
-            if (Steps.OfType<Line>().Any()) { 
+            if (Steps.OfType<Line>().Any())
+            {
                 sb.AppendLine("\t\tauto& currentLine = runner.currentLine;");
                 if (Steps.OfType<Line>().Any(l => l.hasMarkup))
                 {
@@ -323,7 +333,7 @@ namespace ThreadBare
             sb.Append("};\n");
 
             sb.Append(sbSteps.ToString());
-            
+
             sb.AppendLine("\t\t\trunner.EndNode();");
             sb.AppendLine("\t\t\treturn;");
             sb.AppendLine("\t\tdefault:");
@@ -370,7 +380,8 @@ namespace ThreadBare
     {
         public string lineID = "line#";
         public string? condition;
-        
+        public bool once = false;
+
         List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
         public bool hasMarkup = false;
@@ -378,12 +389,13 @@ namespace ThreadBare
         public void AddTextExpression(string textExpression)
         {
             var ce = expressions.LastOrDefault() as CalculatedExpression;
-            if(ce != null && textExpression == "}") { return; }
+            if (ce != null && textExpression == "}") { return; }
             var te = expressions.LastOrDefault() as TextExpression;
-            if(te == null)
+            if (te == null)
             {
-                this.expressions.Add(new TextExpression {text = textExpression });
-            } else
+                this.expressions.Add(new TextExpression { text = textExpression });
+            }
+            else
             {
                 te.text = te.text + textExpression;
             }
@@ -391,7 +403,7 @@ namespace ThreadBare
         public void AddCalculatedExpression(string expression)
         {
             var te = expressions.LastOrDefault() as TextExpression;
-            if (te != null && te.text.EndsWith('{')) { te.text = te.text.Remove(te.text.Length -1, 1); }
+            if (te != null && te.text.EndsWith('{')) { te.text = te.text.Remove(te.text.Length - 1, 1); }
             this.expressions.Add(new CalculatedExpression { text = expression });
         }
         public void AddTag(Compiler compiler, string text)
@@ -409,7 +421,7 @@ namespace ThreadBare
             sb.AppendLine($"\t\t\t// {lineID}");
             sb.AppendLine("\t\t\tcurrentLine.StartNewLine();");
 
-            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine:true, node.compiler);
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine: true, node.compiler);
 
             expressionsWithMarkup.ForEach(expression =>
             {
@@ -448,7 +460,7 @@ namespace ThreadBare
             });
             if (tags.Any())
             {
-                var joinedTags = string.Join(", ", tags.Select(t=>$"LineTag::{t.Name}"));
+                var joinedTags = string.Join(", ", tags.Select(t => $"LineTag::{t.Name}"));
                 sb.AppendLine($"\t\t\tfor(LineTag p : {{{joinedTags}}}) {{ currentLine.markup.tags.emplace_back(p);}}");
                 if (tags.Any(t => t.Params.Any()))
                 {
@@ -456,9 +468,25 @@ namespace ThreadBare
                     sb.AppendLine($"\t\t\tfor(int p : {{{joinedTagParams}}}) {{ currentLine.markup.tagParams.emplace_back(p);}}");
                 }
             }
+            var conditions = new List<string>();
+            string onceLabel = "";
+            if (once)
+            {
+                onceLabel = node.RegisterOnceLabel(lineID);
+                conditions.Add($"!runner.variables.{onceLabel}");
+            }
             if (!string.IsNullOrWhiteSpace(condition))
             {
-                sb.AppendLine($"\t\t\tcurrentLine.condition = {condition};");
+                conditions.Add(condition);
+            }
+            if (conditions.Any())
+            {
+                var joinedConditions = string.Join(" && ", conditions);
+                sb.AppendLine($"\t\t\tcurrentLine.condition = ({joinedConditions});");
+            }
+            if (once)
+            {
+                sb.AppendLine($"\t\t\trunner.variables.{onceLabel} &= currentLine.condition;");
             }
             sb.AppendLine($"\t\t\trunner.FinishLine({label});");
             sb.AppendLine("\t\t\treturn;");
@@ -476,11 +504,12 @@ namespace ThreadBare
         public void AddTextExpression(string textExpression);
         public void AddTag(Compiler compiler, string text);
     }
-    internal class Expression {}
-    internal class TextExpression : Expression { 
+    internal class Expression { }
+    internal class TextExpression : Expression
+    {
         public string text = "";
     }
-    internal class CalculatedExpression : Expression 
+    internal class CalculatedExpression : Expression
     {
         public string text = "";
     }
@@ -496,7 +525,7 @@ namespace ThreadBare
         protected static void EscapeAndAdd(List<Expression> result, string input)
         {
             var escaped = input.Replace("\\[", "[").Replace("\\]", "]").Replace("\\", "\\\\");
-            if(!string.IsNullOrEmpty(escaped))
+            if (!string.IsNullOrEmpty(escaped))
             {
                 result.Add(new TextExpression { text = escaped });
             }
@@ -509,15 +538,16 @@ namespace ThreadBare
 
             Markup? currentMarkup = null;
             var isNoMarkupMode = false;
-            foreach(var sourceExpression in expressions)
+            foreach (var sourceExpression in expressions)
             {
-                if(sourceExpression is CalculatedExpression) { 
+                if (sourceExpression is CalculatedExpression)
+                {
                     var c = (CalculatedExpression)sourceExpression;
-                    if(currentMarkup!=null) { currentMarkup.parameters.Add(c.text); }
+                    if (currentMarkup != null) { currentMarkup.parameters.Add(c.text); }
                     else { result.Add(sourceExpression); }
                     continue;
                 }
-                
+
                 var textExpression = sourceExpression as TextExpression;
                 if (textExpression == null) { throw new Exception("Unexpected expression type in markup parser."); }
                 var whitespaceTrimming = false;
@@ -525,14 +555,15 @@ namespace ThreadBare
                 // iterate through text, gobbling up the next chunk as appropriate 
                 while (currentText.Any())
                 {
-                    if(isNoMarkupMode)
+                    if (isNoMarkupMode)
                     {
                         var closePosition = currentText.IndexOf("[/nomarkup]");
-                        if(closePosition == -1)
+                        if (closePosition == -1)
                         {
                             result.Add(new TextExpression { text = currentText });
                             break;
-                        } else
+                        }
+                        else
                         {
                             isNoMarkupMode = false;
                             EscapeAndAdd(result, currentText.Substring(0, closePosition));
@@ -540,15 +571,15 @@ namespace ThreadBare
                             continue;
                         }
                     }
-                    if(currentMarkup != null)
+                    if (currentMarkup != null)
                     {
                         currentText = currentText.TrimStart();
                         // Case 1: Handle end of markup
                         var isEndSelfClosing = currentText.StartsWith("/]");
                         var isEndNotSelfClosing = currentText.StartsWith("]");
-                        if(isEndSelfClosing || isEndNotSelfClosing)
+                        if (isEndSelfClosing || isEndNotSelfClosing)
                         {
-                            if(currentMarkup.name == "nomarkup")
+                            if (currentMarkup.name == "nomarkup")
                             {
                                 isNoMarkupMode = true;
                                 currentMarkup = null;
@@ -566,7 +597,7 @@ namespace ThreadBare
                             }
                             currentMarkup = null;
                             currentText = currentText.Substring(isEndNotSelfClosing ? 1 : 2);
-                            if(whitespaceTrimming && currentText.Any() && char.IsWhiteSpace(currentText[0]))
+                            if (whitespaceTrimming && currentText.Any() && char.IsWhiteSpace(currentText[0]))
                             {
                                 currentText = currentText.Substring(1);
                             }
@@ -580,16 +611,17 @@ namespace ThreadBare
                         // Case 2.5: Handle parameter value, if any
                         if (currentText.StartsWith('='))
                         {
-                            if(currentText.Length == 1) { 
+                            if (currentText.Length == 1)
+                            {
                                 // the value is a calculated expression, so it'll get adding in the next expression iteration
-                                break; 
+                                break;
                             }
                             var paramValueBuilder = new StringBuilder();
                             currentText = currentText.Substring(1);
                             var isStringValue = false;
                             if (currentText.StartsWith('\"')) { isStringValue = true; currentText = currentText.Substring(1); paramValueBuilder.Append("\""); }
                             var isPreviousCharSlash = false;
-                            while(currentText.Any())
+                            while (currentText.Any())
                             {
                                 var c = currentText[0];
                                 // Don't want to gobble the closing brace
@@ -613,30 +645,34 @@ namespace ThreadBare
                                     isPreviousCharSlash = true;
                                     continue;
                                 }
-                                else 
+                                else
                                 {
                                     paramValueBuilder.Append(c);
-                                }   
+                                }
                             }
                             var paramValue = paramValueBuilder.ToString();
-                            if(currentMarkup.parameterNames.Last() == "trimwhitespace") {
+                            if (currentMarkup.parameterNames.Last() == "trimwhitespace")
+                            {
                                 currentMarkup.parameterNames.Remove("trimwhitespace");
-                                whitespaceTrimming &= paramValue != "false"; 
-                            } else
+                                whitespaceTrimming &= paramValue != "false";
+                            }
+                            else
                             {
                                 currentMarkup.parameters.Add(paramValue);
                             }
-                            
+
                             continue;
                         }
-                        continue;    
+                        continue;
                     }
                     // No current markup, so search in string to find the next one, if any
                     var match = Regex.Match(currentText, @"(?<!\\)(?:\\\\)*(\[[/]?\w*)");
-                    if(!match.Success) { 
+                    if (!match.Success)
+                    {
                         EscapeAndAdd(result, currentText);
-                        break; }
-                    if(match.Index == 0 || char.IsWhiteSpace(currentText[match.Index - 1]))
+                        break;
+                    }
+                    if (match.Index == 0 || char.IsWhiteSpace(currentText[match.Index - 1]))
                     {
                         whitespaceTrimming = true;
                     }
@@ -647,18 +683,18 @@ namespace ThreadBare
                     {
                         var closingName = match.Value.Substring("[/".Length);
                         // Close All
-                        if (closingName.Length==0)
+                        if (closingName.Length == 0)
                         {
-                            foreach(var markupToClose in activeMarkups)
+                            foreach (var markupToClose in activeMarkups)
                             {
-                                result.Add(new Markup { isStart=false, name=markupToClose });
+                                result.Add(new Markup { isStart = false, name = markupToClose });
                             }
                             activeMarkups.Clear();
                             currentText = currentText.Substring("/]".Length);
                             continue;
                         }
-                        
-                        result.Add(new Markup { isStart = false, name= closingName });
+
+                        result.Add(new Markup { isStart = false, name = closingName });
                         activeMarkups.Remove(closingName);
                         currentText = currentText.Substring(closingName.Length + 2);
                         continue;
@@ -666,7 +702,7 @@ namespace ThreadBare
                     // We're starting a brand new markup
                     var name = match.Value.Substring(1);
                     currentMarkup = new Markup { name = name };
-                    
+
                     if (!currentText.StartsWith($"{name}="))
                     {
                         // Not a shorthand property, so safe to gobble up the name
@@ -678,12 +714,13 @@ namespace ThreadBare
             for (int i = 0; i < result.Count; i++)
             {
                 var resultItem = result[i];
-                if(resultItem is Markup markup && markup.name == "select")
+                if (resultItem is Markup markup && markup.name == "select")
                 {
                     result.RemoveAt(i);
                     var selectExpression = new Select(markup, isLine, compiler);
                     result.Insert(i, selectExpression);
-                } else if(resultItem is Markup pm && (pm.name == "plural" || pm.name == "ordinal"))
+                }
+                else if (resultItem is Markup pm && (pm.name == "plural" || pm.name == "ordinal"))
                 {
                     result.RemoveAt(i);
                     var pluralExpression = new PluralMarkup(pm, isLine, compiler);
@@ -693,17 +730,17 @@ namespace ThreadBare
 
 
             var markupCount = result.OfType<Markup>().Count();
-            var markupParamsCount = result.OfType<Markup>().SelectMany(m=>m.parameters).Count();
+            var markupParamsCount = result.OfType<Markup>().SelectMany(m => m.parameters).Count();
 
 
 
 
             var needCharacter = isLine && !result.OfType<Markup>().Any(m => m.name == "character");
-            if(needCharacter)
+            if (needCharacter)
             {
                 // Potentially strip out a leading ":" if line dummy's out the character
                 var firstResult = result.First();
-                if(firstResult is TextExpression te)
+                if (firstResult is TextExpression te)
                 {
                     if (te.text.StartsWith(':'))
                     {
@@ -734,7 +771,7 @@ namespace ThreadBare
                         {
                             result.Insert(i, new TextExpression { text = textParts[1] });
                         }
-                        result.Insert(i, new Markup { name = "character", isStart=false });
+                        result.Insert(i, new Markup { name = "character", isStart = false });
                         if (!string.IsNullOrWhiteSpace(textParts[0]))
                         {
                             result.Insert(i, new TextExpression { text = textParts[0] });
@@ -769,8 +806,13 @@ namespace ThreadBare
                 te.text = te.text + textExpression;
             }
         }
-        public void AddCalculatedExpression(string expression)
+        public void AddCalculatedExpression(string? expression)
         {
+            if (expression == null)
+            {
+                //todo: maybe should throw an error here?
+                return;
+            }
             var te = expressions.LastOrDefault() as TextExpression;
             if (te != null && te.text.EndsWith('{')) { te.text = te.text.Remove(te.text.Length - 1, 1); }
             this.expressions.Add(new CalculatedExpression { text = expression });
@@ -779,19 +821,19 @@ namespace ThreadBare
         {
             List<string> args = new List<string>();
 
-            foreach(var expression in expressions)
+            foreach (var expression in expressions)
             {
                 if (expression is TextExpression)
                 {
                     var text = ((TextExpression)expression).text;
                     var splits = text.Split(" ");
-                    foreach(var split in splits)
+                    foreach (var split in splits)
                     {
                         if (split.Trim().Length == 0) { continue; }
                         // Todo deal with args that should be string wrapped, variables, fixedpoint numbers, etc.
                         args.Add(split.Trim());
                     }
-                    
+
                 }
                 else if (expression is CalculatedExpression)
                 {
@@ -801,13 +843,14 @@ namespace ThreadBare
             }
             var commandName = args.FirstOrDefault("error");
             args.RemoveAt(0);
-            if(commandName == "stop")
+            if (commandName == "stop")
             {
                 var sb = new StringBuilder();
                 sb.AppendLine("runner.Stop();");
                 sb.AppendLine("return;");
                 return sb.ToString();
-            } else if (commandName == "wait")
+            }
+            else if (commandName == "wait")
             {
                 var waitContinueLabel = node.RegisterLabel("waitContinue");
                 var sb = new StringBuilder();
@@ -824,7 +867,7 @@ namespace ThreadBare
             throw new InvalidDataException("Commands can't have tags");
         }
     }
-    
+
     internal class Set : Step
     {
 
@@ -841,14 +884,25 @@ namespace ThreadBare
     {
         public string expression = "true";
         public string jumpIfFalseLabel = "";
-        
+
         public string Compile(Node node)
         {
-            var result = $"\t\t\tif(!({expression})){{\n\t\t\t\trunner.ReturnAndGoto({jumpIfFalseLabel});\n\t\t\t\treturn; }}\n"; 
+            var result = $"\t\t\tif(!({expression})){{\n\t\t\t\trunner.ReturnAndGoto({jumpIfFalseLabel});\n\t\t\t\treturn; }}\n";
             return result;
         }
     }
-    internal class GoTo: Step
+    internal class OnceIsSeen : Step
+    {
+        public string variableName = "";
+
+        public string Compile(Node node)
+        {
+            // This would probably be better as an index into a bitfield
+            var result = $"\t\t\trunner.variables.{variableName} = true;\n";
+            return result;
+        }
+    }
+    internal class GoTo : Step
     {
         public string targetLabel = "";
         public string Compile(Node node)
@@ -857,7 +911,7 @@ namespace ThreadBare
             return result;
         }
     }
-    internal class Label: Step
+    internal class Label : Step
     {
         public string label = "";
         public string Compile(Node node)
@@ -868,10 +922,11 @@ namespace ThreadBare
     }
     internal class Option : Step, IExpressionDestination
     {
-        public int index = 0 ;
+        public int index = 0;
         public string? lineID = null;
         public string jumpToLabel = "";
         public string? condition;
+        public string? onceLabel = null;
 
         List<Tag> tags = new List<Tag>();
         List<Expression> expressions = new List<Expression>();
@@ -904,16 +959,26 @@ namespace ThreadBare
             sb.AppendLine($"\t\t\t// {lineId}");
             sb.AppendLine("\t\t\t{");
             sb.AppendLine($"\t\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>({jumpToLabel});");
-            if(condition != null)
+
+            var conditions = new List<string>();
+            if (!string.IsNullOrEmpty(onceLabel))
             {
-                sb.AppendLine($"\t\t\t\tcurrentOption.condition = {condition};");
+                conditions.Add($"!runner.variables.{onceLabel}");
             }
-            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine:false, node.compiler);
-            if(expressionsWithMarkup.OfType<Markup>().Any() || tags.Any())
+            if (condition != null)
+            {
+                conditions.Add(condition);
+            }
+            if (conditions.Any())
+            {
+                sb.AppendLine($"\t\t\t\tcurrentOption.condition = {string.Join(" && ", conditions)};");
+            }
+            var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine: false, node.compiler);
+            if (expressionsWithMarkup.OfType<Markup>().Any() || tags.Any())
             {
                 sb.AppendLine($"\t\t\t\tauto& optionMarkup = currentOption.markup;");
             }
-            
+
             expressionsWithMarkup.ForEach(expression =>
             {
                 if (expression is TextExpression)
@@ -969,9 +1034,10 @@ namespace ThreadBare
             compiler.LineOrOptionTagParamCount = Math.Max(compiler.LineOrOptionTagParamCount, tag.Params.Count());
         }
     }
-    internal class StartOptions: Step
+    internal class StartOptions : Step
     {
-        public string Compile(Node node) {
+        public string Compile(Node node)
+        {
             return "\n\t\t\trunner.options.clear();\n";
         }
     }
@@ -982,7 +1048,7 @@ namespace ThreadBare
             return "\t\t\trunner.state = Options;\n\t\t\treturn;\n\n";
         }
     }
-    internal class PluralMarkup: Expression
+    internal class PluralMarkup : Expression
     {
         bool isCardinal = true; // if false then is ordinal
         bool isLine = true;
@@ -1024,7 +1090,7 @@ namespace ThreadBare
             var splitPattern = "(%)";
             var subExpressions = Regex.Split(text, splitPattern).Where(t => !string.IsNullOrEmpty(t)).Select(t => t == "%" ? matchValue : $"\"{t}\"");
             sb.AppendLine($"{tabs}\tcase PluralCase::{pluralCase}: ");
-            foreach(var chunk in subExpressions)
+            foreach (var chunk in subExpressions)
             {
                 if (isLine)
                 {
@@ -1071,7 +1137,7 @@ namespace ThreadBare
             markup.parameters.RemoveAt(valueIndex);
             markup.parameterNames.RemoveAt(valueIndex);
 
-            if(markup.parameterNames.All(p=> int.TryParse(p,out _) || p.Contains("::")))
+            if (markup.parameterNames.All(p => int.TryParse(p, out _) || p.Contains("::")))
             {
                 isNumberKeys = true;
             }
@@ -1083,18 +1149,20 @@ namespace ThreadBare
                 mapping.Add(name, markup.parameters[i]);
             }
         }
-        public string getText() {
+        public string getText()
+        {
             var tabs = isLine ? "\t\t\t" : "\t\t\t\t";
             var sb = new StringBuilder();
 
             sb.AppendLine($"{tabs}switch({(isNumberKeys ? matchValue : $"bn::make_hash({matchValue})")}) {{");
             foreach (var map in mapping)
             {
-                sb.Append($"{tabs}\tcase {(isNumberKeys ? map.Key: $"\"{map.Key}\"_h")}: ");
+                sb.Append($"{tabs}\tcase {(isNumberKeys ? map.Key : $"\"{map.Key}\"_h")}: ");
                 if (isLine)
                 {
                     sb.Append($"currentLine << {map.Value}; break;\n");
-                } else
+                }
+                else
                 {
                     sb.Append($"currentOption << {map.Value}; break; \n");
                 }
@@ -1124,7 +1192,7 @@ namespace ThreadBare
             this.Params = parsedTag.Groups["tagparams"]
                 ?.Value
                 ?.Split(',')
-                ?.Where(p=> !string.IsNullOrWhiteSpace(p))
+                ?.Where(p => !string.IsNullOrWhiteSpace(p))
                 ?.Select(p =>
                 {
                     if (p.Contains(':'))
@@ -1138,10 +1206,10 @@ namespace ThreadBare
                     return p;
                 }) ?? Enumerable.Empty<string>();
         }
-        
+
 
     }
 
 
-    
+
 }
