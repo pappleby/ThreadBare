@@ -117,6 +117,7 @@ class TBScriptRunner {
         void Stop();
         void FinishLine(int toNextStep);
         void ReturnAndGoto(int toNextStep);    
+        void SetNoValidOption(int toNextStep);
         void WaitTick();
         void ChooseOption(int i);
         bool VisitedNode(VisitedNodeName key);

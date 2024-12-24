@@ -14,7 +14,7 @@ namespace ThreadBare
         public required Compiler compiler;
         public override void EnterNode(YarnSpinnerParser.NodeContext context)
         {
-            var newNode = new Node(compiler);
+            var newNode = new Node { compiler = compiler };
             newNode.nodeIntervalStart = context.Start.StartIndex;
             newNode.filename = context.SourceFileName ?? "";
 
@@ -32,6 +32,7 @@ namespace ThreadBare
 
             if (cn.isInNodeGroup)
             {
+                compiler.NodeGroupNames.Add(nodeTitle);
                 var sanitizedFileName = cn.filename.Replace(".yarn", "");
                 nodeTitle = $"_{nodeTitle}_{sanitizedFileName}_{cn.nodeIntervalStart}";
             }

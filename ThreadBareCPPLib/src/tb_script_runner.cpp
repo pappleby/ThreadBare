@@ -26,6 +26,12 @@ void TBScriptRunner::EndNode() {
     }
 }
 
+void TBScriptRunner::SafeJump(void (*node)(TBScriptRunner&, NodeState&)) {
+    this->nodeStates.pop_back();
+    this->nodeStates.emplace_back(NodeState(node));
+    this->state = Working; 
+}
+
 void TBScriptRunner::Jump(void (*node)(TBScriptRunner&, NodeState&)) {
     this->nodeStates.clear();
     this->nodeStates.emplace_back(NodeState(node));
@@ -67,6 +73,9 @@ void TBScriptRunner::FinishLine(int toNextStep) {
 }
 void TBScriptRunner::ReturnAndGoto(int toNextStep) {
     this->state = Working;
+    this->nodeStates.back().nextStep = toNextStep;
+}
+void TBScriptRunner::SetNoValidOption(int toNextStep) {
     this->nodeStates.back().nextStep = toNextStep;
 }
 void TBScriptRunner::WaitTick()

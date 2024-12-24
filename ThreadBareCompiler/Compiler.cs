@@ -11,6 +11,7 @@ namespace ThreadBare
         public Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
 
         public HashSet<string> NodeNames = new HashSet<string>();
+        public HashSet<string> NodeGroupNames = new HashSet<string>();
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
@@ -63,9 +64,20 @@ namespace ThreadBare
             sb.AppendLine("#include <bn_math.h>");
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
+            var nodeGroupsToCompile = new List<string>();
             foreach (var node in Nodes.Values.Where(n => n.filename == filename))
             {
                 sb.Append(node.Compile());
+                if (node.isInNodeGroup && this.NodeGroupNames.Contains(node.OriginalName))
+                {
+                    nodeGroupsToCompile.Add(node.OriginalName);
+                    this.NodeGroupNames.Remove(node.OriginalName);
+                }
+            }
+            foreach (var nodeGroupName in nodeGroupsToCompile)
+            {
+                var compiledNodeGroup = CompileNodeGroupWrapper(nodeGroupName, filename);
+                sb.AppendLine(compiledNodeGroup);
             }
             sb.AppendLine("}");
             return sb.ToString();
@@ -137,15 +149,59 @@ namespace ThreadBare
             return sb.ToString();
         }
 
+        private string CompileNodeGroupWrapper(string nodeGroupName, string filename)
+        {
+            var nodes = Nodes.Values.Where(n => n.OriginalName == nodeGroupName).ToList();
+            var decisionNode = new Node { Name = nodeGroupName, compiler = this, filename = filename, isVisitCounted = this.VisitedCountNodeNames.Contains(nodeGroupName), isVisited = this.VisitedNodeNames.Contains(nodeGroupName) };
+            string endOfGroupLabel = decisionNode.RegisterLabel("group_end");
+
+            var labels = new List<string>();
+            var onceLabels = new Dictionary<int, string>();
+            int optionCount = 0;
+            decisionNode.AddStep(new StartOptions());
+            foreach (var node in nodes)
+            {
+                var optionStep = new Option { index = optionCount, isLineGroupItem = true, complexityCount = node.complexity };
+                decisionNode.AddStep(optionStep);
+
+                // Generate the name of internal label that we'll jump to if
+                // this option is selected. We'll emit the label itself later.
+                string optionDestinationLabel = decisionNode.RegisterLabel($"shortcutoption_{nodeGroupName}_{optionCount + 1}");
+                labels.Add(optionDestinationLabel);
+                optionStep.jumpToLabel = optionDestinationLabel;
+                optionStep.conditions = node.conditions;
+                if (node.isOnce)
+                {
+                    var onceLabel = decisionNode.RegisterOnceLabel($"{node.OriginalName}_{optionCount}");
+                    onceLabels.Add(optionCount, onceLabel);
+                    optionStep.onceLabel = onceLabel;
+                }
+
+                optionCount++;
+            }
+
+            decisionNode.AddStep(new SendLineGroup { NoValidOptionsJumpTo = endOfGroupLabel });
+            optionCount = 0;
+
+            foreach (var node in nodes)
+            {
+                decisionNode.AddStep(new Label { label = labels[optionCount] });
+                if (node.isOnce)
+                {
+                    decisionNode.AddStep(new OnceIsSeen { variableName = onceLabels[optionCount] });
+                }
+                decisionNode.AddStep(new Jump { Target = node.Name, SafeJump = true });
+
+                optionCount++;
+            }
+            decisionNode.AddStep(new Label { label = endOfGroupLabel });
+            return decisionNode.Compile();
+        }
     }
 
     internal class Node
     {
-        public Node(Compiler compiler)
-        {
-            this.compiler = compiler;
-        }
-        public Compiler compiler;
+        public required Compiler compiler;
         public string Name = "node";
         public string OriginalName = "node";
         public bool isInNodeGroup = false;
@@ -160,6 +216,7 @@ namespace ThreadBare
         public bool isVisitCounted = false;
         public int onceCount = 0;
         public List<string> conditions = new List<string>();
+        public int complexity = 0;
         public bool isOnce = false;
         /// <summary>
         /// Generates a unique label name to use in the program.
@@ -268,10 +325,18 @@ namespace ThreadBare
     internal class Jump : Step
     {
         public string Target = "Start";
+        public bool SafeJump = false;
         public string Compile(Node node)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"\t\t\trunner.Jump(&{Target});");
+            if (SafeJump)
+            {
+                sb.AppendLine($"\t\t\trunner.SafeJump(&{Target});");
+            }
+            else
+            {
+                sb.AppendLine($"\t\t\trunner.Jump(&{Target});");
+            }
             sb.AppendLine("\t\t\treturn;");
             return sb.ToString();
         }
@@ -292,6 +357,7 @@ namespace ThreadBare
             return sb.ToString();
         }
     }
+
     internal class Line : Step, IExpressionDestination
     {
         public string lineID = "line#";
@@ -851,7 +917,7 @@ namespace ThreadBare
         public int index = 0;
         public string? lineID = null;
         public string jumpToLabel = "";
-        public string? condition;
+        public List<string> conditions = new List<string>();
         public string? onceLabel = null;
         public int complexityCount = 0;
         public bool isLineGroupItem = false;
@@ -887,19 +953,25 @@ namespace ThreadBare
             sb.AppendLine($"\t\t\t// {lineId}");
             sb.AppendLine("\t\t\t{");
             sb.AppendLine($"\t\t\t\tauto currentOption = Option<OPTION_BUFFER_SIZE>({jumpToLabel});");
+            var isOnce = !string.IsNullOrEmpty(onceLabel);
 
-            var conditions = new List<string>();
-            if (!string.IsNullOrEmpty(onceLabel))
+            var conditionCount = conditions.Count() + (isOnce ? 1 : 0);
+
+            if (conditionCount > 0)
             {
-                conditions.Add($"!runner.variables.{onceLabel}");
-            }
-            if (condition != null)
-            {
-                conditions.Add(condition);
-            }
-            if (conditions.Any())
-            {
-                sb.AppendLine($"\t\t\t\tcurrentOption.condition = {string.Join(" && ", conditions)};");
+                sb.AppendLine($"\t\t\t\tauto trueConditionCount = 0;");
+                foreach (var condition in conditions)
+                {
+                    sb.AppendLine($"\t\t\t\tif({condition}){{trueConditionCount++;}}");
+                }
+                if (isOnce)
+                {
+                    sb.AppendLine($"\t\t\t\tif(!runner.variables.{onceLabel}){{trueConditionCount++;}}");
+                }
+                sb.AppendLine($"\t\t\t\tcurrentOption.condition = trueConditionCount == {conditionCount};");
+                sb.AppendLine($"\t\t\t\tcurrentOption.trueConditionCount = trueConditionCount;");
+                sb.AppendLine($"\t\t\t\tcurrentOption.conditionCount = {conditionCount};");
+                sb.AppendLine($"\t\t\t\tcurrentOption.complexity = {this.complexityCount};");
             }
             var expressionsWithMarkup = Markup.ExtractMarkup(expressions, isLine: false, node.compiler);
             if (expressionsWithMarkup.OfType<Markup>().Any() || tags.Any())
@@ -978,9 +1050,12 @@ namespace ThreadBare
     }
     internal class SendLineGroup : Step
     {
+        public string NoValidOptionsJumpTo = "";
         public string Compile(Node node)
         {
-            return "\t\t\trunner.state = LineGroup;\n\t\t\treturn;\n\n";
+            var result = $"\t\t\trunner.SetNoValidOption(&{NoValidOptionsJumpTo});\n";
+            result += "\t\t\trunner.state = LineGroup;\n\t\t\treturn;\n\n";
+            return result;
         }
     }
     internal class PluralMarkup : Expression

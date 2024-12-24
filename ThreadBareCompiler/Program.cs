@@ -78,9 +78,11 @@ namespace ThreadBare
                 {
                     continue;
                 }
+
                 var compiledCpp = CompileFile(gbaListener, compiler, ysFile);
                 File.WriteAllText(Path.Combine(cppDir.FullName, ysFile.Name + ".cpp"), compiledCpp);
             }
+            // Attempt to compile node groups in their respective files, but need to write them in a new file if the source nodes are defined in different files
             var compiledHeader = compiler.CompileScriptHeader();
             File.WriteAllText(Path.Combine(hDir.FullName, "script.yarn.h"), compiledHeader);
 
@@ -212,7 +214,7 @@ namespace ThreadBare
                 // They're good for leaving notes!
 
                 You can also write 'commands', which represent things that happen in the game!
-
+                test: {visited("test")}
                 In this editor, they'll appear as text:
 
                 <<fade_up 1.0>>
@@ -284,7 +286,7 @@ namespace ThreadBare
 
                 title: test
                 when: false
-                when: false
+                when: false && false && false && true
                 when: once
                 ---
                 hmm false

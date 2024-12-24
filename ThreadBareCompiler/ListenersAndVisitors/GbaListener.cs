@@ -45,17 +45,21 @@ namespace ThreadBare
             cn.isInNodeGroup = true;
             if (context.always != null)
             {
-                cn.conditions.Add("true");
+                //cn.conditions.Add("true");
                 return;
             }
 
             if (context.once != null)
             {
                 cn.isOnce = true;
+                cn.complexity += 1;
                 return;
             }
-
-            this.expressionVisitor.Visit(context.expression());
+            // Should probably evaluate the complexity here and store it on the node?
+            var expression = context.expression();
+            this.expressionVisitor.Visit(expression);
+            var complexity = ExpressionsVisitor.GetBooleanOperatorCountInExpression(expression);
+            cn.complexity += complexity;
             cn.conditions.Add(this.expressionVisitor.FlushParamaters());
         }
         /// <summary> 

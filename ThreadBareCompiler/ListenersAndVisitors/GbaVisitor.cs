@@ -363,19 +363,19 @@ namespace ThreadBare
 
                     if (conditionExpressionContext != null)
                     {
-                        conditionCount += GetBooleanOperatorCountInExpression(conditionExpressionContext);
+                        conditionCount += ExpressionsVisitor.GetBooleanOperatorCountInExpression(conditionExpressionContext);
                         optionStep.complexityCount = conditionCount;
                         // Evaluate the condition, and leave it on the stack
                         expressionVisitor.Visit(conditionExpressionContext);
 
-                        optionStep.condition = expressionVisitor.FlushParamaters();
+                        optionStep.conditions.Add(expressionVisitor.FlushParamaters());
                     }
                 }
                 // Store hashtags somewhere? handle later?
                 optionCount++;
             }
 
-            cn.AddStep(new SendLineGroup());
+            cn.AddStep(new SendLineGroup { NoValidOptionsJumpTo = endOfGroupLabel });
 
             // We'll now emit the labels and code associated with each option.
             optionCount = 0;
@@ -491,7 +491,7 @@ namespace ThreadBare
                         // Evaluate the condition, and leave it on the stack
                         expressionVisitor.Visit(conditionExpressionContext);
 
-                        optionStep.condition = expressionVisitor.FlushParamaters();
+                        optionStep.conditions.Add(expressionVisitor.FlushParamaters());
                     }
                 }
                 foreach (var hashtag in shortcut.line_statement()?.hashtag() ?? [])
@@ -555,8 +555,6 @@ namespace ThreadBare
             return 0;
         }
 
-
-
         public override int VisitDeclare_statement(YarnSpinnerParser.Declare_statementContext context)
         {
             // Declare statements do not participate in code generation
@@ -591,34 +589,6 @@ namespace ThreadBare
             var outputReturnStep = new FinishNode { };
             compiler.CurrentNode!.AddStep(outputReturnStep);
             return 0;
-        }
-
-        /// <summary>
-        /// Gets the total number of boolean operations - ands, ors, nots, and
-        /// xors - present in an expression and its sub-expressions.
-        /// </summary>
-        /// <param name="context">An expression.</param>
-        /// <returns>The total number of boolean operations in the
-        /// expression.</returns>
-        private static int GetBooleanOperatorCountInExpression(ParserRuleContext context)
-        {
-            var subtreeCount = 0;
-
-            if (context is ExpAndOrXorContext || context is ExpNotContext)
-            {
-                // This expression is a boolean expression.
-                subtreeCount += 1;
-            }
-
-            foreach (var child in context.children)
-            {
-                if (child is ParserRuleContext childContext)
-                {
-                    subtreeCount += GetBooleanOperatorCountInExpression(childContext);
-                }
-            }
-
-            return subtreeCount;
         }
     }
 

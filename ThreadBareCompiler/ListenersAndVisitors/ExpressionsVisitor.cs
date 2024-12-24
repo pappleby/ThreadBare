@@ -362,7 +362,33 @@ namespace ThreadBare
             Modulo,
         }
 
+        /// <summary>
+        /// Gets the total number of boolean operations - ands, ors, nots, and
+        /// xors - present in an expression and its sub-expressions.
+        /// </summary>
+        /// <param name="context">An expression.</param>
+        /// <returns>The total number of boolean operations in the
+        /// expression.</returns>
+        public static int GetBooleanOperatorCountInExpression(ParserRuleContext context)
+        {
+            var subtreeCount = 0;
 
+            if (context is ExpAndOrXorContext || context is ExpNotContext)
+            {
+                // This expression is a boolean expression.
+                subtreeCount += 1;
+            }
+
+            foreach (var child in context.children)
+            {
+                if (child is ParserRuleContext childContext)
+                {
+                    subtreeCount += GetBooleanOperatorCountInExpression(childContext);
+                }
+            }
+
+            return subtreeCount;
+        }
 
     }
 }
