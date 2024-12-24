@@ -1,22 +1,20 @@
-﻿using Antlr4.Runtime.Misc;
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
-using Yarn;
 using Yarn.Compiler;
 
 namespace ThreadBare
 {
-    internal class Compiler : YarnSpinnerParserBaseListener
+    internal class Compiler
     {
         public string? IncludeHeaderName = null;
         string ScriptNamespace = "ThreadBare";
+        public Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
 
-        Dictionary<string, Node> Nodes = new Dictionary<string, Node>();
-        HashSet<string> NodeNames = new HashSet<string>();
+        public HashSet<string> NodeNames = new HashSet<string>();
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
-        public HashSet<string> OnceVariables = new HashSet<string>();
+        public HashSet<string> OnceVariables = new HashSet<string>(); // TDOO add these to a generated header
         public int LineOrOptionTagParamCount = 0;
         public HashSet<string> MarkupNames = new HashSet<string>();
         public int MarkupsInLineCount = 0;
@@ -24,6 +22,8 @@ namespace ThreadBare
         public int MaxOptionsCount = 0;
         public HashSet<string> VisitedNodeNames = new HashSet<string>();
         public HashSet<string> VisitedCountNodeNames = new HashSet<string>();
+        public List<Enum> Enums = new List<Enum>();
+        public string CurrentFileName = "";
 
         public Node? CurrentNode { get; set; }
 
@@ -51,7 +51,7 @@ namespace ThreadBare
             return newName;
         }
 
-        public string Compile()
+        public string Compile(string filename)
         {
             var sb = new StringBuilder();
             // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
@@ -63,7 +63,7 @@ namespace ThreadBare
             sb.AppendLine("#include <bn_math.h>");
             sb.AppendLine("#include <bn_fixed.h>");
             sb.AppendLine($"namespace {ScriptNamespace} {{");
-            foreach (var node in Nodes.Values)
+            foreach (var node in Nodes.Values.Where(n => n.filename == filename))
             {
                 sb.Append(node.Compile());
             }
@@ -118,10 +118,16 @@ namespace ThreadBare
             sb.AppendLine("\n\t// attributes:");
             sb.AppendLine($"\tenum class Attribute : int {{ {joinedAttributes} }};");
 
-            sb.AppendLine($"\t// Nodes:");
+            sb.AppendLine($"\n\t// Nodes:");
             foreach (var nodeName in NodeNames)
             {
                 sb.AppendLine($"\tvoid {nodeName}(TBScriptRunner& runner, NodeState& nodeState);");
+            }
+
+            sb.AppendLine("\n\t// Enums");
+            foreach (var e in Enums)
+            {
+                sb.AppendLine(e.Compile());
             }
 
             sb.Append("""
@@ -130,96 +136,9 @@ namespace ThreadBare
                 """);
             return sb.ToString();
         }
-        public void SaveNodeNames()
-        {
-            NodeNames.UnionWith(Nodes.Keys);
-        }
-        public void ClearNodes()
-        {
-            SaveNodeNames();
-            Nodes.Clear();
-        }
-        /// <summary>
-        /// we have found a new node set up the currentNode var ready to
-        /// hold it and otherwise continue
-        /// </summary>
-        /// <inheritdoc/>
-        public override void EnterNode(YarnSpinnerParser.NodeContext context)
-        {
-            this.CurrentNode = new Node(this);
-        }
-        /// <summary>
-        /// have left the current node store it into the program wipe the
-        /// var and make it ready to go again
-        /// </summary>
-        /// <inheritdoc />
-        public override void ExitNode(YarnSpinnerParser.NodeContext context)
-        {
-            this.Nodes.Add(this.CurrentNode!.Name, this.CurrentNode);
-            this.CurrentNode = null;
-        }
-        public override void ExitTitle_header([NotNull] YarnSpinnerParser.Title_headerContext context)
-        {
 
-            this.CurrentNode!.Name = context.title.Text;
-        }
-
-        /// <summary> 
-        /// have finished with the header so about to enter the node body
-        /// and all its statements do the initial setup required before
-        /// compiling that body statements eg emit a new startlabel
-        /// </summary>
-        /// <inheritdoc />
-        public override void ExitHeader(YarnSpinnerParser.HeaderContext context)
-        {
-            var headerKey = context.header_key.Text;
-
-            // Use the header value if provided, else fall back to the
-            // empty string. This means that a header like "foo: \n" will
-            // be stored as 'foo', '', consistent with how it was typed.
-            // That is, it's not null, because a header was provided, but
-            // it was written as an empty line.
-            var headerValue = context.header_value?.Text ?? String.Empty;
-
-            if (headerKey.Equals("tags", StringComparison.InvariantCulture))
-            {
-                // Split the list of tags by spaces, and use that
-                var tags = headerValue.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var tag in tags)
-                {
-                    this.CurrentNode?.AddTag(tag);
-                }
-
-                //if (this.CurrentNode.Tags.Contains("rawText"))
-                //{
-                //    // This is a raw text node. Flag it as such for future
-                //    // compilation.
-                //    this.RawTextNode = true;
-                //}
-            }
-
-            var header = new Header();
-            header.Key = headerKey;
-            header.Value = headerValue;
-            // this.CurrentNode.Headers.Add(header);
-        }
-
-        /// <summary>
-        /// have entered the body the header should have finished being
-        /// parsed and currentNode ready all we do is set up a body visitor
-        /// and tell it to run through all the statements it handles
-        /// everything from that point onwards
-        /// </summary>
-        /// <inheritdoc />
-        public override void EnterBody(YarnSpinnerParser.BodyContext context)
-        {
-            var gbaVisitor = new GbaVisitor(this, "false");
-            foreach (var statement in context.statement())
-            {
-                gbaVisitor.Visit(statement);
-            }
-        }
     }
+
     internal class Node
     {
         public Node(Compiler compiler)
@@ -228,14 +147,20 @@ namespace ThreadBare
         }
         public Compiler compiler;
         public string Name = "node";
+        public string OriginalName = "node";
+        public bool isInNodeGroup = false;
+        public string filename = "";
+        public int nodeIntervalStart = 0; // used for disambiguating nodes in the same group 
         List<Tag> tags = new List<Tag>();
         List<Step> Steps = new List<Step>();
-        public Stack<string> parameters = new Stack<string>();
+        //public Stack<string> parameters = new Stack<string>();
         private int labelCount = 1;
         List<string> labels = new List<string>();
         public bool isVisited = false;
         public bool isVisitCounted = false;
         public int onceCount = 0;
+        public List<string> conditions = new List<string>();
+        public bool isOnce = false;
         /// <summary>
         /// Generates a unique label name to use in the program.
         /// </summary>
@@ -254,16 +179,7 @@ namespace ThreadBare
             this.compiler.OnceVariables.Add(label);
             return label;
         }
-        public void AddParameter(string p)
-        {
-            parameters.Push(p);
-        }
-        public string FlushParamaters()
-        {
-            var debugString = string.Join(" ", parameters);
-            parameters.Clear();
-            return debugString;
-        }
+
         public int stepCount => Steps.Count();
         public IExpressionDestination? GetCurrentLine()
         {
@@ -1228,7 +1144,50 @@ namespace ThreadBare
 
 
     }
+    internal class Enum
+    {
+        public required string Name { get; set; }
+        public List<EnumCase> Cases = new List<EnumCase>();
+        public string Compile()
+        {
+            if (!Cases.Any())
+            {
+                return "";
+            }
+            var sb = new StringBuilder();
+            var firstValue = Cases[0].Value;
+            if (firstValue == null)
+            {
+                var joinedCaseNames = string.Join(", ", Cases.Select(c => c.Name));
+                sb.AppendLine($"\tenum class {Name} : int {{ {joinedCaseNames} }};");
+            }
+            else if (int.TryParse(firstValue, out _))
+            {
+                var joinedCaseItems = string.Join(", ", Cases.Select(c => $"{c.Name} = {c.Value}"));
+                sb.AppendLine($"\tenum class {Name} : int {{ {joinedCaseItems} }};");
+            }
+            // Apparently invalid to have a fixed point number as an enum value
+            //else if (firstValue.StartsWith("bn::fixed"))
+            //{
+            //    var joinedStructDefs = string.Join("", Cases.Select(c => $"\n\t\tconstexpr static bn::fixed {c.Name} = {c.Value};"));
+            //    sb.AppendLine($"\tstruct _{Name} {{{joinedStructDefs}}};");
+            //    sb.AppendLine($"\tconstexpr _{Name} {Name}");
+            //}
+            else
+            {
+                var joinedStructDefs = string.Join("", Cases.Select(c => $"\n\t\tconstexpr static bn::string_view {c.Name} = {c.Value};"));
+                sb.AppendLine($"\tstruct _{Name} {{{joinedStructDefs}}};");
+                sb.AppendLine($"\tconstexpr _{Name} {Name}");
+            }
 
+            return sb.ToString();
+        }
+    }
 
+    internal class EnumCase
+    {
+        public required string Name { get; set; }
+        public string? Value { get; set; }
 
+    }
 }

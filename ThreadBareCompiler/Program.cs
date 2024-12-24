@@ -9,8 +9,8 @@ namespace ThreadBare
     {
         static void Main(string[] args)
         {
-            //debugmain();
-            //return;
+            debugmain();
+            return;
 
             var compileCommand = new RootCommand("Compiles a directory of ys into .cpp / .h files");
             var inputOption = new Option<DirectoryInfo>(
@@ -52,6 +52,8 @@ namespace ThreadBare
             var oldHFiles = hDir.EnumerateFiles("*.yarn.h", searchSubs);
             var oldCppFiles = cppDir.EnumerateFiles("*.yarn.cpp", searchSubs);
             var compiler = new Compiler() { IncludeHeaderName = includeH?.Name };
+            var definitionsListener = new DefinitionsListener { compiler = compiler };
+            var gbaListener = new GbaListener { compiler = compiler };
 
             foreach (var ysFile in ysFiles)
             {
@@ -59,8 +61,24 @@ namespace ThreadBare
                 {
                     continue;
                 }
-                var compiledCpp = CompileFile(compiler, ysFile);
-                compiler.ClearNodes();
+                var input = CharStreams.fromPath(ysFile.FullName);
+                YarnSpinnerLexer lexer = new YarnSpinnerLexer(input);
+                CommonTokenStream tokens = new CommonTokenStream(lexer);
+                YarnSpinnerParser parser = new YarnSpinnerParser(tokens);
+
+                var tree = parser.dialogue();
+                ParseTreeWalker walker = new ParseTreeWalker();
+                walker.Walk(definitionsListener, tree);
+
+            }
+
+            foreach (var ysFile in ysFiles)
+            {
+                if (ysFile == null || !ysFile.Exists)
+                {
+                    continue;
+                }
+                var compiledCpp = CompileFile(gbaListener, compiler, ysFile);
                 File.WriteAllText(Path.Combine(cppDir.FullName, ysFile.Name + ".cpp"), compiledCpp);
             }
             var compiledHeader = compiler.CompileScriptHeader();
@@ -68,7 +86,7 @@ namespace ThreadBare
 
         }
 
-        static string CompileFile(Compiler compiler, FileInfo file)
+        static string CompileFile(GbaListener gbaListener, Compiler compiler, FileInfo file)
         {
             var input = CharStreams.fromPath(file.FullName);
             YarnSpinnerLexer lexer = new YarnSpinnerLexer(input);
@@ -77,8 +95,9 @@ namespace ThreadBare
 
             var tree = parser.dialogue();
             ParseTreeWalker walker = new ParseTreeWalker();
-            walker.Walk(compiler, tree);
-            var result = compiler.Compile();
+            walker.Walk(gbaListener, tree);
+            // TODO: File.Name probably doesn't match the filename in SourceFileName. Double check this.
+            var result = compiler.Compile(file.Name);
             return result;
         }
 
@@ -88,6 +107,29 @@ namespace ThreadBare
                 title: Start
                 tags: #camera2 nodetagtest:conductor_cabin
                 ---
+
+                <<enum Food>>
+                  <<case Apple = 1>>
+                  <<case Orange = 3>>
+                  <<case Pear = 6>>
+                <<endenum>>
+
+                <<enum Food2>>
+                  <<case Apple>>
+                  <<case Orange>>
+                  <<case Pear>>
+                  <<case Unique>>
+                <<endenum>>
+
+                <<enum Food3>>
+                  <<case Apple = "test">>
+                  <<case Orange = "blah">>
+                  <<case Pear = "hmm" >>
+                <<endenum>>
+
+                How Does this work {Food.Apple}
+                And this? {.Unique}
+
                 <<declare $test to 5>>
 
                 => option 1
@@ -232,6 +274,21 @@ namespace ThreadBare
                 <<return>>
                 I should never be seen!
                 ===
+
+                title: test
+                when: true
+                when: always
+                ---
+                hmm
+                ===
+
+                title: test
+                when: false
+                when: false
+                when: once
+                ---
+                hmm false
+                ===
                 """");
 
             YarnSpinnerLexer lexer = new YarnSpinnerLexer(input);
@@ -243,12 +300,20 @@ namespace ThreadBare
 
             var compiler = new Compiler();
             ParseTreeWalker walker = new ParseTreeWalker();
-            walker.Walk(compiler, tree);
+
+            var definitionsListener = new DefinitionsListener { compiler = compiler };
+            var gbaListener = new GbaListener { compiler = compiler };
+            walker.Walk(definitionsListener, tree);
+
+            walker.Walk(gbaListener, tree);
 
 
-            var result = compiler.Compile();
+            var result = compiler.Compile("");
+
             var headerResult = compiler.CompileScriptHeader();
             Console.WriteLine(result);
+            Console.WriteLine("NOW FOR THE HEADER");
+            Console.WriteLine(headerResult);
             Console.WriteLine($"Max markups in line: {compiler.MarkupsInLineCount}");
             Console.WriteLine($"Max markup params in line: {compiler.MarkupParamsInLineCount}");
         }
