@@ -169,12 +169,10 @@ namespace ThreadBare
                 string optionDestinationLabel = decisionNode.RegisterLabel($"shortcutoption_{nodeGroupName}_{optionCount + 1}");
                 labels.Add(optionDestinationLabel);
                 optionStep.jumpToLabel = optionDestinationLabel;
-                optionStep.conditions = node.conditions;
+                optionStep.conditions = node.conditions.ToList();
                 if (node.isOnce)
                 {
-                    var onceLabel = decisionNode.RegisterOnceLabel($"{node.OriginalName}_{optionCount}");
-                    onceLabels.Add(optionCount, onceLabel);
-                    optionStep.onceLabel = onceLabel;
+                    optionStep.conditions.Add($"!runner.VisitedNode({node.Name})");
                 }
 
                 optionCount++;
@@ -186,10 +184,6 @@ namespace ThreadBare
             foreach (var node in nodes)
             {
                 decisionNode.AddStep(new Label { label = labels[optionCount] });
-                if (node.isOnce)
-                {
-                    decisionNode.AddStep(new OnceIsSeen { variableName = onceLabels[optionCount] });
-                }
                 decisionNode.AddStep(new Jump { Target = node.Name, SafeJump = true });
 
                 optionCount++;

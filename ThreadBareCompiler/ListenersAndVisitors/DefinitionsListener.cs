@@ -32,9 +32,14 @@ namespace ThreadBare
 
             if (cn.isInNodeGroup)
             {
+                compiler.NodeNames.Add(nodeTitle);
                 compiler.NodeGroupNames.Add(nodeTitle);
                 var sanitizedFileName = cn.filename.Replace(".yarn", "");
                 nodeTitle = $"_{nodeTitle}_{sanitizedFileName}_{cn.nodeIntervalStart}";
+                if (cn.isOnce)
+                {
+                    compiler.VisitedNodeNames.Add(nodeTitle);
+                }
             }
             cn.Name = nodeTitle;
 
@@ -94,6 +99,10 @@ namespace ThreadBare
         {
             var cn = compiler.CurrentNode!;
             cn.isInNodeGroup = true;
+            if (context.once != null)
+            {
+                cn.isOnce = true;
+            }
 
         }
         /// <summary>
