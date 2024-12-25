@@ -15,7 +15,7 @@ namespace ThreadBare
         public HashSet<string> NodeTags = new HashSet<string>();
         public HashSet<string> LineTags = new HashSet<string>();
         public HashSet<string> OptionTags = new HashSet<string>();
-        public HashSet<string> OnceVariables = new HashSet<string>(); // TDOO add these to a generated header
+        public HashSet<string> OnceVariables = new HashSet<string>();
         public int LineOrOptionTagParamCount = 0;
         public HashSet<string> MarkupNames = new HashSet<string>();
         public int MarkupsInLineCount = 0;
@@ -107,6 +107,11 @@ namespace ThreadBare
             // Need at least 1 for array storage
             sb.AppendLine($"\tconstexpr static int VISIT_COUNT_NODE_COUNT = {Math.Max(1, VisitedCountNodeNames.Count())};");
 
+            var onceCount = OnceVariables.Count();
+            onceCount = Math.Max(8, ((8 - (onceCount % 8)) % 8) + onceCount);
+            sb.AppendLine($"\tconstexpr static int ONCE_VARIABLE_COUNT = {onceCount};");
+
+
             var joinedNodes = string.Join(", ", NodeNames);
             sb.AppendLine("\n\t// nodes names");
             sb.AppendLine($"\tenum class Node : int {{ {joinedNodes} }};");
@@ -121,6 +126,8 @@ namespace ThreadBare
             var vcnn = string.Join(", ", VisitedCountNodeNames);
             sb.AppendLine($"\tenum class VisitCountedNodeName : int {{ {vcnn} }};");
 
+            var onceNames = string.Join(", ", OnceVariables);
+            sb.AppendLine($"\tenum class OnceKey : int {{ {onceNames} }};");
 
             var joinedTags = string.Join(", ", LineTags.Concat(OptionTags));
             sb.AppendLine("\n\t// tags:");
@@ -449,7 +456,7 @@ namespace ThreadBare
             if (once)
             {
                 onceLabel = node.RegisterOnceLabel(lineID);
-                conditions.Add($"!runner.variables.{onceLabel}");
+                conditions.Add($"!runner.Once(OnceKey::{onceLabel})");
             }
             if (!string.IsNullOrWhiteSpace(condition))
             {
@@ -462,7 +469,7 @@ namespace ThreadBare
             }
             if (once)
             {
-                sb.AppendLine($"\t\t\trunner.variables.{onceLabel} &= currentLine.condition;");
+                sb.AppendLine($"\t\t\trunner.Once(OnceKey::{onceLabel}) &= currentLine.condition;");
             }
             sb.AppendLine($"\t\t\trunner.FinishLine({label});");
             sb.AppendLine("\t\t\treturn;");
@@ -873,8 +880,8 @@ namespace ThreadBare
 
         public string Compile(Node node)
         {
-            // This would probably be better as an index into a bitfield
-            var result = $"\t\t\trunner.variables.{variableName} = true;\n";
+
+            var result = $"\t\t\trunner.SetOnce(OnceKey::{variableName});\n";
             return result;
         }
     }
@@ -960,7 +967,7 @@ namespace ThreadBare
                 }
                 if (isOnce)
                 {
-                    sb.AppendLine($"\t\t\t\tif(!runner.variables.{onceLabel}){{trueConditionCount++;}}");
+                    sb.AppendLine($"\t\t\t\tif(!runner.Once(OnceKey::{onceLabel})){{trueConditionCount++;}}");
                 }
                 sb.AppendLine($"\t\t\t\tcurrentOption.condition = trueConditionCount == {conditionCount};");
                 sb.AppendLine($"\t\t\t\tcurrentOption.trueConditionCount = trueConditionCount;");

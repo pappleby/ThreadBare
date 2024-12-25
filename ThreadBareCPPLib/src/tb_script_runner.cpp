@@ -98,6 +98,13 @@ bool TBScriptRunner::VisitedNode(VisitedNodeName key) {
     return this->visitedNodes.test((int) key);
 };
 
+bool TBScriptRunner::Once(OnceKey key) {
+    return this->onceTest.test((int) key);
+};
+void TBScriptRunner::SetOnce(OnceKey key) {
+    return this->onceTest.set((int) key, true);
+};
+
 int TBScriptRunner::VisitedCountNode(VisitCountedNodeName key) {
     return this->visitCountNodes[(int) key];
 };

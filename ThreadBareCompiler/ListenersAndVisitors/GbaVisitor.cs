@@ -273,8 +273,7 @@ namespace ThreadBare
             }
             if (!string.IsNullOrEmpty(onceVariableName))
             {
-                // Todo: replace once being a variable with an item in a bitfield
-                testExpression = $"!runner.variables.{onceVariableName}" + (expression != null ? $"&&{testExpression}" : "");
+                testExpression = $"!runner.Once(OnceKey::{onceVariableName})" + (expression != null ? $"&&{testExpression}" : "");
             }
             if (!string.IsNullOrEmpty(testExpression))
             {
