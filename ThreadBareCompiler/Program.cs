@@ -133,7 +133,11 @@ namespace ThreadBare
                 And this? {.Unique}
 
                 <<declare $test to 5>>
+                <<declare $smart to 5 + $test>>
+                <<declare $smart_but_plain to 5 + 5>>
+                <<declare $chained_dep to 15 + $test + $smart + $smart_but_plain>>
 
+                TEST: {$chained_dep}
                 => option 1
                     option text 1
                 => option 2 <<once>>
@@ -293,10 +297,10 @@ namespace ThreadBare
                 ===
                 """");
 
-            YarnSpinnerLexer lexer = new YarnSpinnerLexer(input);
-            CommonTokenStream tokens = new CommonTokenStream(lexer);
+            var lexer = new YarnSpinnerLexer(input);
+            var tokens = new CommonTokenStream(lexer);
 
-            YarnSpinnerParser parser = new YarnSpinnerParser(tokens);
+            var parser = new YarnSpinnerParser(tokens);
 
             var tree = parser.dialogue();
 
@@ -306,7 +310,7 @@ namespace ThreadBare
             var definitionsListener = new DefinitionsListener { compiler = compiler };
             var gbaListener = new GbaListener { compiler = compiler };
             walker.Walk(definitionsListener, tree);
-
+            compiler.ResolveSmartVariables();
             walker.Walk(gbaListener, tree);
 
 

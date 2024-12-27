@@ -1,5 +1,4 @@
-﻿using Antlr4.Runtime.Misc;
-using global::Yarn.Compiler;
+﻿using global::Yarn.Compiler;
 using static Yarn.Compiler.YarnSpinnerParser;
 
 namespace ThreadBare
@@ -17,9 +16,13 @@ namespace ThreadBare
             this.expressionVisitor = new ExpressionsVisitor(compiler, trackingEnabled);
         }
 
-        public override int VisitEnum_statement([NotNull] Enum_statementContext context)
+        public override int VisitEnum_statement(Enum_statementContext context)
         {
             var enumName = context.name.Text;
+            if (this.compiler.Enums.Any(e => e.Name == enumName))
+            {
+                return 0;
+            }
             var resultEnum = new Enum { Name = enumName };
 
             foreach (var enumCase in context.enum_case_statement())
@@ -35,12 +38,13 @@ namespace ThreadBare
                 }
                 resultEnum.Cases.Add(resultCase);
             }
+
             this.compiler.Enums.Add(resultEnum);
             return 0;
         }
 
         // Used to figure out which nodes need to have visit counts
-        public override int VisitFunction_call(YarnSpinnerParser.Function_callContext context)
+        public override int VisitFunction_call(Function_callContext context)
         {
             string functionName = context.FUNC_ID().GetText();
             var functionParams = context.expression();
@@ -64,6 +68,25 @@ namespace ThreadBare
             // Shouldn't ever be needed, but just in case
             expressionVisitor.parameters?.Clear();
             return 0;
+        }
+        public override int VisitDeclare_statement(Declare_statementContext context)
+        {
+            var name = context.variable().GetText();
+
+            var value = context.expression();
+
+            return 0;
+        }
+        public override int VisitVariable(VariableContext context)
+        {
+            var test = context.GetText();
+            if (!this.compiler.Variables.ContainsKey(test))
+            {
+                // Keep track of implicit variables
+                this.compiler.Variables.Add(test, "");
+            }
+
+            return base.VisitVariable(context);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using System.Text;
 using System.Text.RegularExpressions;
 using Yarn.Compiler;
+using static Yarn.Compiler.YarnSpinnerParser;
 
 namespace ThreadBare
 {
@@ -23,6 +24,10 @@ namespace ThreadBare
         public int MaxOptionsCount = 0;
         public HashSet<string> VisitedNodeNames = new HashSet<string>();
         public HashSet<string> VisitedCountNodeNames = new HashSet<string>();
+        public Dictionary<string, string> Variables = new Dictionary<string, string>();
+        public Dictionary<string, SmartVariable> UnresolvedSmartVariables = new Dictionary<string, SmartVariable>();
+        public Dictionary<string, string> ResolvedSmartVariables = new Dictionary<string, string>();
+
         public List<Enum> Enums = new List<Enum>();
         public string CurrentFileName = "";
 
@@ -198,8 +203,34 @@ namespace ThreadBare
             decisionNode.AddStep(new Label { label = endOfGroupLabel });
             return decisionNode.Compile();
         }
+        public void ResolveSmartVariables()
+        {
+            var expressionVisitor = new ExpressionsVisitor(this, "false");
+            while (UnresolvedSmartVariables.Any())
+            {
+                var newlyResolved = new List<string>();
+                foreach (var smart in UnresolvedSmartVariables.Values)
+                {
+                    if (smart.Dependencies.All(d => this.Variables.ContainsKey(d) || this.ResolvedSmartVariables.ContainsKey(d)))
+                    {
+                        // All dependencies are resolvable! Let's do that.
+                        expressionVisitor.Visit(smart.Expression);
+                        var resolvedExpression = expressionVisitor.FlushParamaters();
+                        this.ResolvedSmartVariables.Add(smart.Name, resolvedExpression);
+                        newlyResolved.Add(smart.Name);
+                    }
+                }
+                foreach (var v in newlyResolved)
+                {
+                    UnresolvedSmartVariables.Remove(v);
+                }
+                if (!newlyResolved.Any())
+                {
+                    throw new Exception("Loop detected in smart variables!!!");
+                }
+            }
+        }
     }
-
     internal class Node
     {
         public required Compiler compiler;
@@ -219,6 +250,7 @@ namespace ThreadBare
         public List<string> conditions = new List<string>();
         public int complexity = 0;
         public bool isOnce = false;
+
         /// <summary>
         /// Generates a unique label name to use in the program.
         /// </summary>
@@ -842,6 +874,7 @@ namespace ThreadBare
                 sb.AppendLine($"\t\tcase {waitContinueLabel}:\n");
                 return sb.ToString();
             }
+            // TODO: Should probably put registered functions somewhere other than runner.variables
             var result = $"\t\t\trunner.variables.{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
@@ -859,6 +892,7 @@ namespace ThreadBare
         public string expression = "6";
         public string Compile(Node node)
         {
+            // TODO deal with string variables 
             var result = $"\t\t\trunner.variables.{variable} {operation} {expression};\n\n";
             return result;
         }
@@ -1265,5 +1299,12 @@ namespace ThreadBare
         public required string Name { get; set; }
         public string? Value { get; set; }
 
+    }
+
+    internal class SmartVariable
+    {
+        public required string Name { get; set; }
+        public HashSet<string> Dependencies = new HashSet<string>();
+        public ExpressionContext? Expression { get; set; }
     }
 }

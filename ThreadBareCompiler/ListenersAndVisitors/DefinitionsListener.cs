@@ -121,5 +121,33 @@ namespace ThreadBare
             }
         }
 
+        public override void ExitDeclare_statement([NotNull] YarnSpinnerParser.Declare_statementContext context)
+        {
+            var name = context.variable().GetText();
+            var valueContext = context.expression();
+            var isLiteral = valueContext.ChildCount == 1 && valueContext.children[0] is YarnSpinnerParser.ILiteralContext;
+            if (isLiteral)
+            {
+                this.compiler.Variables[name] = valueContext.GetText();
+            }
+            else
+            {
+                this.compiler.Variables.Remove(name);
+                var t = new VariableDependenciesVisitor();
+
+                t.Visit(valueContext);
+                var dependencies = t.dependencies;
+                if (dependencies.Any())
+                {
+                    this.compiler.UnresolvedSmartVariables.Add(name, new SmartVariable { Name = name, Dependencies = dependencies, Expression = valueContext });
+                }
+                else
+                {
+                    this.compiler.ResolvedSmartVariables.Add(name, valueContext.GetText());
+                }
+            }
+
+        }
+
     }
 }

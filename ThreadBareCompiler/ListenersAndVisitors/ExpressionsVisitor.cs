@@ -1,6 +1,5 @@
 ﻿using System.Globalization;
 using Antlr4.Runtime;
-using Antlr4.Runtime.Misc;
 using global::Yarn.Compiler;
 using static Yarn.Compiler.YarnSpinnerParser;
 
@@ -112,35 +111,35 @@ namespace ThreadBare
             { YarnSpinnerLexer.OPERATOR_MATHS_MODULUS, Operator.Modulo },
         };
         // * / %
-        public override int VisitExpMultDivMod(YarnSpinnerParser.ExpMultDivModContext context)
+        public override int VisitExpMultDivMod(ExpMultDivModContext context)
         {
             this.GenerateCodeForOperation(TokensToOperators[context.op.Type], context.op, context.Type, context.expression(0), context.expression(1));
             return 0;
         }
 
         // + -
-        public override int VisitExpAddSub(YarnSpinnerParser.ExpAddSubContext context)
+        public override int VisitExpAddSub(ExpAddSubContext context)
         {
             this.GenerateCodeForOperation(TokensToOperators[context.op.Type], context.op, context.Type, context.expression(0), context.expression(1));
             return 0;
         }
 
         // < <= > >=
-        public override int VisitExpComparison(YarnSpinnerParser.ExpComparisonContext context)
+        public override int VisitExpComparison(ExpComparisonContext context)
         {
             this.GenerateCodeForOperation(TokensToOperators[context.op.Type], context.op, context.Type, context.expression(0), context.expression(1));
             return 0;
         }
 
         // == !=
-        public override int VisitExpEquality(YarnSpinnerParser.ExpEqualityContext context)
+        public override int VisitExpEquality(ExpEqualityContext context)
         {
             this.GenerateCodeForOperation(TokensToOperators[context.op.Type], context.op, context.Type, context.expression(0), context.expression(1));
             return 0;
         }
 
         // and && or || xor ^
-        public override int VisitExpAndOrXor(YarnSpinnerParser.ExpAndOrXorContext context)
+        public override int VisitExpAndOrXor(ExpAndOrXorContext context)
         {
             this.GenerateCodeForOperation(TokensToOperators[context.op.Type], context.op, context.Type, context.expression(0), context.expression(1));
             return 0;
@@ -151,30 +150,29 @@ namespace ThreadBare
         // easy to extend, easy to read and requires minimal checking as ANTLR
         // has already done all that does have code duplication though
         #region valueCalls
-        public override int VisitTypeMemberReference([NotNull] TypeMemberReferenceContext context)
+        public override int VisitTypeMemberReference(TypeMemberReferenceContext context)
         {
-            var typeName = context.typeName?.Text ?? "TODOLOOKUPENUMNAME";
-            // if typeName is null, then we need to lookup enum case names and find the enum name
-            // Think this only works for case names that are unique for all enums (unless there's some fancy typechecking way to do this)
             var memberName = context.memberName.Text;
             // Maybe could figure out how to replace with different access characters (ie :: instead of . )
             // That could enable enum raw mode, and/or make enum definitions less painful
-            // TODO move enum visiting out of GBA visitor, so that we can handle ".UniqueEnumValue" syntax
+            var typeName = context.typeName?.Text ?? this.compiler.Enums.Where(e => e.Cases.Any(c => c.Name == memberName)).FirstOrDefault()?.Name ?? "ENUMKEYNOTFOUND";
+            // if typeName is null, then we need to lookup enum case names and find the enum name
+            // Think this only works for case names that are unique for all enums (unless there's some fancy typechecking way to do this)
             this.AddParameter($"{typeName}.{memberName}");
             return 0;
         }
         // variable
-        public override int VisitExpValue(YarnSpinnerParser.ExpValueContext context)
+        public override int VisitExpValue(ExpValueContext context)
         {
             // Does this get used for anything other than enums?
             return this.Visit(context.value());
         }
-        public override int VisitValueVar(YarnSpinnerParser.ValueVarContext context)
+        public override int VisitValueVar(ValueVarContext context)
         {
             return this.Visit(context.variable());
         }
 
-        public override int VisitValueNumber(YarnSpinnerParser.ValueNumberContext context)
+        public override int VisitValueNumber(ValueNumberContext context)
         {
             float number = float.Parse(context.NUMBER().GetText(), CultureInfo.InvariantCulture);
             var numberString = number.ToString();
@@ -189,26 +187,33 @@ namespace ThreadBare
             return 0;
         }
 
-        public override int VisitValueTrue(YarnSpinnerParser.ValueTrueContext context)
+        public override int VisitValueTrue(ValueTrueContext context)
         {
             this.parameters.Push("true");
             return 0;
         }
 
-        public override int VisitValueFalse(YarnSpinnerParser.ValueFalseContext context)
+        public override int VisitValueFalse(ValueFalseContext context)
         {
             this.parameters.Push("false");
             return 0;
         }
-        public override int VisitVariable(YarnSpinnerParser.VariableContext context)
+        public override int VisitVariable(VariableContext context)
         {
-            string variableName = context.VAR_ID().GetText().Replace("$", "runner.variables.");
-            this.parameters.Push(variableName);
+            var variableName = context.VAR_ID().GetText();
+
+            if (this.compiler.ResolvedSmartVariables.TryGetValue(variableName, out var smartExpression))
+            {
+                this.parameters.Push(smartExpression);
+                return 0;
+            }
+            var outputVariable = variableName.Replace("$", "runner.variables.");
+            this.parameters.Push(outputVariable);
 
             return 0;
         }
 
-        public override int VisitValueString(YarnSpinnerParser.ValueStringContext context)
+        public override int VisitValueString(ValueStringContext context)
         {
             string stringVal = context.STRING().GetText();
             this.parameters.Push(stringVal);
@@ -216,7 +221,7 @@ namespace ThreadBare
         }
         // all we need do is visit the function itself, it will handle
         // everything
-        public override int VisitValueFunc(YarnSpinnerParser.ValueFuncContext context)
+        public override int VisitValueFunc(ValueFuncContext context)
         {
             this.Visit(context.function_call());
             return 0;
@@ -228,13 +233,13 @@ namespace ThreadBare
         #region specialCaseCalls
 
         // (expression)
-        public override int VisitExpParens(YarnSpinnerParser.ExpParensContext context)
+        public override int VisitExpParens(ExpParensContext context)
         {
             return this.Visit(context.expression());
         }
 
         // -expression
-        public override int VisitExpNegative(YarnSpinnerParser.ExpNegativeContext context)
+        public override int VisitExpNegative(ExpNegativeContext context)
         {
             this.GenerateCodeForOperation(Operator.UnaryMinus, context.op, context.Type, context.expression());
 
@@ -242,14 +247,14 @@ namespace ThreadBare
         }
 
         // (not NOT !)expression
-        public override int VisitExpNot(YarnSpinnerParser.ExpNotContext context)
+        public override int VisitExpNot(ExpNotContext context)
         {
             this.GenerateCodeForOperation(Operator.Not, context.op, context.Type, context.expression());
 
             return 0;
         }
 
-        private void GenerateCodeForFunctionCall(string functionName, YarnSpinnerParser.Function_callContext functionContext, YarnSpinnerParser.ExpressionContext[] parameters)
+        private void GenerateCodeForFunctionCall(string functionName, Function_callContext functionContext, ExpressionContext[] parameters)
         {
             var compiledParameters = new List<string>();
             var ps = this.parameters;
@@ -274,6 +279,7 @@ namespace ThreadBare
             }
             else
             {
+                // TODO: put functions somewhwere else other than runner.variables
                 functionName = "runner.variables." + functionName;
             }
 
@@ -282,7 +288,7 @@ namespace ThreadBare
         }
 
         // handles emiting the correct instructions for the function
-        public override int VisitFunction_call(YarnSpinnerParser.Function_callContext context)
+        public override int VisitFunction_call(Function_callContext context)
         {
             string functionName = context.FUNC_ID().GetText();
 
