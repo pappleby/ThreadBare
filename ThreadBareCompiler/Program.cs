@@ -54,6 +54,7 @@ namespace ThreadBare
             var compiler = new Compiler() { IncludeHeaderName = includeH?.Name };
             var definitionsListener = new DefinitionsListener { compiler = compiler };
             var gbaListener = new GbaListener { compiler = compiler };
+            var filenameToTree = new Dictionary<string, YarnSpinnerParser.DialogueContext>();
 
             foreach (var ysFile in ysFiles)
             {
@@ -67,21 +68,24 @@ namespace ThreadBare
                 YarnSpinnerParser parser = new YarnSpinnerParser(tokens);
 
                 var tree = parser.dialogue();
+
+                filenameToTree.Add(ysFile.Name, tree);
                 ParseTreeWalker walker = new ParseTreeWalker();
                 walker.Walk(definitionsListener, tree);
 
             }
 
-            foreach (var ysFile in ysFiles)
+            foreach (var ysFileName_Tree in filenameToTree)
             {
-                if (ysFile == null || !ysFile.Exists)
-                {
-                    continue;
-                }
+                var ysFileName = ysFileName_Tree.Key;
+                var tree = ysFileName_Tree.Value;
 
-                var compiledCpp = CompileFile(gbaListener, compiler, ysFile);
-                File.WriteAllText(Path.Combine(cppDir.FullName, ysFile.Name + ".cpp"), compiledCpp);
+                ParseTreeWalker walker = new ParseTreeWalker();
+                walker.Walk(gbaListener, tree);
+                var compiledCpp = compiler.Compile(ysFileName);
+                File.WriteAllText(Path.Combine(cppDir.FullName, ysFileName + ".cpp"), compiledCpp);
             }
+
             // Attempt to compile node groups in their respective files, but need to write them in a new file if the source nodes are defined in different files
             var compiledHeader = compiler.CompileScriptHeader();
             File.WriteAllText(Path.Combine(hDir.FullName, "script.yarn.h"), compiledHeader);
@@ -310,7 +314,6 @@ namespace ThreadBare
             var definitionsListener = new DefinitionsListener { compiler = compiler };
             var gbaListener = new GbaListener { compiler = compiler };
             walker.Walk(definitionsListener, tree);
-            compiler.ResolveSmartVariables();
             walker.Walk(gbaListener, tree);
 
 

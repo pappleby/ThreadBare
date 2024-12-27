@@ -59,6 +59,10 @@ namespace ThreadBare
 
         public string Compile(string filename)
         {
+            if (UnresolvedSmartVariables.Any())
+            {
+                ResolveSmartVariables();
+            }
             var sb = new StringBuilder();
             // sb.AppendLine("#pragma GCC diagnostic ignored \"-Wpedantic\"");
             if (!string.IsNullOrWhiteSpace(IncludeHeaderName))
