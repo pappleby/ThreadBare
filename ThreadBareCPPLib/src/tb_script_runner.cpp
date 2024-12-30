@@ -102,7 +102,7 @@ bool TBScriptRunner::Once(OnceKey key) {
     return this->onceTest.test((int) key);
 };
 void TBScriptRunner::SetOnce(OnceKey key) {
-    return this->onceTest.set((int) key, true);
+    this->onceTest.set((int) key, true);
 };
 
 int TBScriptRunner::VisitedCountNode(VisitCountedNodeName key) {

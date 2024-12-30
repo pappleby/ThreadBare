@@ -110,6 +110,7 @@ class TBScriptRunner {
         bn::bitset<VISITED_NODE_COUNT> visitedNodes;
         bn::bitset<ONCE_VARIABLE_COUNT> onceTest;
         bn::array<int, VISIT_COUNT_NODE_COUNT> visitCountNodes;
+        void SafeJump(void (*node)(TBScriptRunner&, NodeState&));
         void Jump(void (*node)(TBScriptRunner&, NodeState&));
         void Detour(void (*node)(TBScriptRunner&, NodeState&));
         void StartTimer(int seconds, int toNextStep = 0 );
