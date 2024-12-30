@@ -14,4 +14,10 @@
     <PackageReference Include="YarnSpinner.Compiler" Version="3.0.0-beta.1" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="debug.yarn">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

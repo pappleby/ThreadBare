@@ -9,8 +9,8 @@ namespace ThreadBare
     {
         static void Main(string[] args)
         {
-            debugmain();
-            return;
+            //debugmain();
+            //return;
 
             var compileCommand = new RootCommand("Compiles a directory of ys into .cpp / .h files");
             var inputOption = new Option<DirectoryInfo>(
@@ -70,6 +70,7 @@ namespace ThreadBare
                 var tree = parser.dialogue();
 
                 filenameToTree.Add(ysFile.Name, tree);
+                compiler.CurrentFileName = ysFile.Name;
                 ParseTreeWalker walker = new ParseTreeWalker();
                 walker.Walk(definitionsListener, tree);
 

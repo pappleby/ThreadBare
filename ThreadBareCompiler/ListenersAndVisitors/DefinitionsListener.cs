@@ -16,7 +16,7 @@ namespace ThreadBare
         {
             var newNode = new Node { compiler = compiler };
             newNode.nodeIntervalStart = context.Start.StartIndex;
-            newNode.filename = context.SourceFileName ?? "";
+            newNode.filename = compiler.CurrentFileName;
 
             compiler.CurrentNode = newNode;
         }
