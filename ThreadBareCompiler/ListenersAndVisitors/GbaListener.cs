@@ -79,22 +79,22 @@ namespace ThreadBare
             // it was written as an empty line.
             var headerValue = context.header_value?.Text ?? String.Empty;
 
-            if (headerKey.Equals("tags", StringComparison.InvariantCulture))
-            {
-                // Split the list of tags by spaces, and use that
-                var tags = headerValue.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var tag in tags)
-                {
-                    compiler.CurrentNode?.AddTag(tag);
-                }
+            //if (headerKey.Equals("tags", StringComparison.InvariantCulture))
+            //{
+            //    // Split the list of tags by spaces, and use that
+            //    var tags = headerValue.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            //    foreach (var tag in tags)
+            //    {
+            //        compiler.CurrentNode?.AddTag(tag);
+            //    }
 
-                //if (this.CurrentNode.Tags.Contains("rawText"))
-                //{
-                //    // This is a raw text node. Flag it as such for future
-                //    // compilation.
-                //    this.RawTextNode = true;
-                //}
-            }
+            //    //if (this.CurrentNode.Tags.Contains("rawText"))
+            //    //{
+            //    //    // This is a raw text node. Flag it as such for future
+            //    //    // compilation.
+            //    //    this.RawTextNode = true;
+            //    //}
+            //}
 
             var header = new Header();
             header.Key = headerKey;

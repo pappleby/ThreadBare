@@ -7,6 +7,8 @@ namespace ThreadBare {
 	constexpr static int MAX_OPTIONS_COUNT = 0;
 	constexpr static int MAX_TAGS_COUNT = 0;
 	constexpr static int MAX_TAG_PARAMS_COUNT = 0;
+	constexpr static int MAX_NODE_TAGS_COUNT = 2;
+	constexpr static int MAX_NODE_TAG_PARAMS_COUNT = 2;
 	constexpr static int MAX_ATTRIBUTES_COUNT = 0;
 	constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = 0;
 	constexpr static int VISITED_NODE_COUNT = 8;

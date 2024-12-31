@@ -280,7 +280,7 @@ namespace ThreadBare
             else
             {
                 // TODO: put functions somewhwere else other than runner.variables
-                functionName = "runner.variables." + functionName;
+                // functionName = "runner.variables." + functionName;
             }
 
             var outputText = $"{functionName}({string.Join(", ", compiledParameters)})";

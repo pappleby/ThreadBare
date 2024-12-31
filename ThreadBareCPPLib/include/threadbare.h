@@ -88,8 +88,8 @@ class NodeState {
     public:
         void (*nodeFn)(TBScriptRunner&, NodeState&);
         int nextStep = 0;
-        bn::vector<NodeTag, MAX_TAGS_COUNT> tags;
-        bn::vector<int, MAX_TAG_PARAMS_COUNT> tagParams;
+        bn::vector<NodeTag, MAX_NODE_TAGS_COUNT> tags;
+        bn::vector<int, MAX_NODE_TAG_PARAMS_COUNT> tagParams;
         NodeState(void (*node)(TBScriptRunner&, NodeState&)){
             this->nodeFn = node;
         }

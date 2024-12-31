@@ -28,7 +28,7 @@ namespace ThreadBare
                     description: "Output directory for header files (default: current directory)",
                     getDefaultValue: () => new DirectoryInfo(Environment.CurrentDirectory)
             );
-            var includeHOption = new Option<FileInfo?>(
+            var includeHOption = new Option<String?>(
                     name: "-include",
                     description: "Header to include in generated cpp files)",
                     getDefaultValue: () => null
@@ -44,14 +44,14 @@ namespace ThreadBare
             compileCommand.Invoke(args);
         }
 
-        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir, FileInfo? includeH)
+        static void CompileFiles(DirectoryInfo ysDir, DirectoryInfo hDir, DirectoryInfo cppDir, string? includeH)
         {
 
             var searchSubs = new EnumerationOptions { RecurseSubdirectories = true };
             var ysFiles = ysDir.EnumerateFiles("*.yarn", searchSubs);
             var oldHFiles = hDir.EnumerateFiles("*.yarn.h", searchSubs);
             var oldCppFiles = cppDir.EnumerateFiles("*.yarn.cpp", searchSubs);
-            var compiler = new Compiler() { IncludeHeaderName = includeH?.Name };
+            var compiler = new Compiler() { IncludeHeaderName = includeH };
             var definitionsListener = new DefinitionsListener { compiler = compiler };
             var gbaListener = new GbaListener { compiler = compiler };
             var filenameToTree = new Dictionary<string, YarnSpinnerParser.DialogueContext>();

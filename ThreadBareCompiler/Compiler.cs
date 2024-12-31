@@ -18,6 +18,7 @@ namespace ThreadBare
         public HashSet<string> OptionTags = new HashSet<string>();
         public HashSet<string> OnceVariables = new HashSet<string>();
         public int LineOrOptionTagParamCount = 0;
+        public int NodeTagParamCount = 0;
         public HashSet<string> MarkupNames = new HashSet<string>();
         public int MarkupsInLineCount = 0;
         public int MarkupParamsInLineCount = 0;
@@ -105,6 +106,10 @@ namespace ThreadBare
             sb.AppendLine($"\tconstexpr static int MAX_OPTIONS_COUNT = {Math.Max(1, MaxOptionsCount)};");
             sb.AppendLine($"\tconstexpr static int MAX_TAGS_COUNT = {Math.Max(1, Math.Max(LineTags.Count(), OptionTags.Count()))};");
             sb.AppendLine($"\tconstexpr static int MAX_TAG_PARAMS_COUNT = {Math.Max(1, LineOrOptionTagParamCount)};");
+
+            sb.AppendLine($"\tconstexpr static int MAX_NODE_TAGS_COUNT = {Math.Max(1, NodeTags.Count())};");
+            sb.AppendLine($"\tconstexpr static int MAX_NODE_TAG_PARAMS_COUNT = {Math.Max(1, NodeTagParamCount)};");
+
 
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTES_COUNT = {Math.Max(1, MarkupsInLineCount)};");
             sb.AppendLine($"\tconstexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = {Math.Max(1, MarkupParamsInLineCount)};");
@@ -293,6 +298,9 @@ namespace ThreadBare
             var tag = new Tag(TagLocation.Node, text);
             this.tags.Add(tag);
             this.compiler.NodeTags.Add(tag.Name);
+            var totalTags = this.tags.Count;
+            var totalTagParamCount = this.tags.Select(t=> t.Params.Count()).Sum();
+            compiler.NodeTagParamCount = Math.Max(compiler.NodeTagParamCount, totalTagParamCount);
         }
 
         public string Compile()
@@ -879,7 +887,7 @@ namespace ThreadBare
                 return sb.ToString();
             }
             // TODO: Should probably put registered functions somewhere other than runner.variables
-            var result = $"\t\t\trunner.variables.{commandName}({string.Join(", ", args)});\n\n";
+            var result = $"\t\t{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
         public void AddTag(Compiler compiler, string text)
