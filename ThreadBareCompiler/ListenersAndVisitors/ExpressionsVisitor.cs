@@ -150,6 +150,14 @@ namespace ThreadBare
         // easy to extend, easy to read and requires minimal checking as ANTLR
         // has already done all that does have code duplication though
         #region valueCalls
+        public override int VisitValueTypeMemberReference(ValueTypeMemberReferenceContext context)
+        {
+            if(context.ChildCount != 1)
+            {
+                throw new InvalidOperationException("ValueTypeMemberReference should only have one child");
+            }
+            return this.Visit(context.children[0]);
+        }
         public override int VisitTypeMemberReference(TypeMemberReferenceContext context)
         {
             var memberName = context.memberName.Text;

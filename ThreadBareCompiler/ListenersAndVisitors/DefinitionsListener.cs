@@ -137,14 +137,8 @@ namespace ThreadBare
 
                 t.Visit(valueContext);
                 var dependencies = t.dependencies;
-                if (dependencies.Any())
-                {
-                    this.compiler.UnresolvedSmartVariables.Add(name, new SmartVariable { Name = name, Dependencies = dependencies, Expression = valueContext });
-                }
-                else
-                {
-                    this.compiler.ResolvedSmartVariables.Add(name, valueContext.GetText());
-                }
+                // Always start out as unresolved even if no dependencies, so that we can handle functions / enums / etc in the expressions at the right time
+                this.compiler.UnresolvedSmartVariables.Add(name, new SmartVariable { Name = name, Dependencies = dependencies, Expression = valueContext });
             }
 
         }

@@ -72,7 +72,10 @@ namespace ThreadBare
                 walker.Walk(definitionsListener, tree);
 
             }
-
+            if (compiler.UnresolvedSmartVariables.Any())
+            {
+                compiler.ResolveSmartVariables();
+            }
             foreach (var ysFileName_Tree in filenameToTree)
             {
                 var ysFileName = ysFileName_Tree.Key;
