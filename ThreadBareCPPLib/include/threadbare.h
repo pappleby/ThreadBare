@@ -74,6 +74,9 @@ template<int MaxSize>
 class Option : public TextBuffer<MaxSize> {
     public:
         int nextStep;
+        int trueConditionCount = 0;
+        int conditionCount = 0;
+        int complexity = 0;
         Option(int setNextStep): TextBuffer<MaxSize>() {
             this->nextStep = setNextStep;
         };
@@ -105,6 +108,7 @@ class TBScriptRunner {
         int waitTimer = 0;
         TextBuffer<LINE_BUFFER_SIZE> currentLine;
         bn::vector<Option<OPTION_BUFFER_SIZE>, MAX_OPTIONS_COUNT> options;
+        TBFunctions functions;
         TBVariables variables;
         bn::vector<NodeState, 4> nodeStates;
         bn::bitset<VISITED_NODE_COUNT> visitedNodes;

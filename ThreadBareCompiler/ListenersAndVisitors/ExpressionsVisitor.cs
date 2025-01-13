@@ -158,7 +158,7 @@ namespace ThreadBare
             var typeName = context.typeName?.Text ?? this.compiler.Enums.Where(e => e.Cases.Any(c => c.Name == memberName)).FirstOrDefault()?.Name ?? "ENUMKEYNOTFOUND";
             // if typeName is null, then we need to lookup enum case names and find the enum name
             // Think this only works for case names that are unique for all enums (unless there's some fancy typechecking way to do this)
-            this.AddParameter($"{typeName}.{memberName}");
+            this.AddParameter($"{typeName}::{memberName}");
             return 0;
         }
         // variable
@@ -280,7 +280,7 @@ namespace ThreadBare
             else
             {
                 // TODO: put functions somewhwere else other than runner.variables
-                // functionName = "runner.variables." + functionName;
+                functionName = "runner.functions." + functionName;
             }
 
             var outputText = $"{functionName}({string.Join(", ", compiledParameters)})";

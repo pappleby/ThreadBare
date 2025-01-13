@@ -887,7 +887,7 @@ namespace ThreadBare
                 return sb.ToString();
             }
             // TODO: Should probably put registered functions somewhere other than runner.variables
-            var result = $"\t\t{commandName}({string.Join(", ", args)});\n\n";
+            var result = $"\t\trunner.functions.{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
         public void AddTag(Compiler compiler, string text)

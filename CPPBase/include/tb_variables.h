@@ -9,6 +9,10 @@ namespace ThreadBare {
     constexpr static int LINE_BUFFER_SIZE = 300;
     constexpr static int OPTION_BUFFER_SIZE = 100;
 
+    class TBFunctions {
+
+    };
+
     class TBVariables {
         public:
             bn::string<12> name = "doug";

@@ -13,6 +13,7 @@ namespace ThreadBare {
 	constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = 0;
 	constexpr static int VISITED_NODE_COUNT = 8;
 	constexpr static int VISIT_COUNT_NODE_COUNT = 1;
+	constexpr static int ONCE_VARIABLE_COUNT = 1;
 
 	// nodes names
 	enum class Node : int {  };
