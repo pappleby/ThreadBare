@@ -29,7 +29,7 @@ namespace ThreadBare
         {
             var cn = compiler.CurrentNode!;
             var nodeTitle = cn.Name;
-
+            
             if (cn.isInNodeGroup)
             {
                 compiler.NodeNames.Add(nodeTitle);
@@ -90,6 +90,13 @@ namespace ThreadBare
                 //    // compilation.
                 //    compiler.RawTextNode = true;
                 //}
+            }
+            if (headerKey.Equals("tracking", StringComparison.InvariantCulture))
+            {
+                if (headerValue.Equals("always", StringComparison.InvariantCulture))
+                {
+                    cn.compiler.VisitedNodeNames.Add(cn.Name);
+                }
             }
             var header = new Header();
             header.Key = headerKey;

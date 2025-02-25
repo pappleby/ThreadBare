@@ -233,10 +233,9 @@ namespace ThreadBare
         public override int VisitOnce_statement([NotNull] Once_statementContext context)
         {
             //// label to give us a jump point for when the once finishes
-            var endOfOnceStatementLabel = this.compiler.CurrentNode!.RegisterLabel();
+            var endOfOnceStatementLabel = this.compiler.CurrentNode!.RegisterLabel("endonce");
 
-            // TODO: Handle the once part of the variable (should be a mostly stable (either base on tag or how many once statements into the current node there are))
-            var onceVariableName = this.compiler.RegisterOnceVariable();
+            var onceVariableName = this.compiler.RegisterOnceVariable(this.compiler.CurrentNode.Name, "block");
             var once_condition_expression = context.once_primary_clause().expression();
 
             var clauseStatement = context.once_primary_clause().statement();
@@ -293,7 +292,7 @@ namespace ThreadBare
 
             var finishClause = new GoTo { targetLabel = jumpLabel };
             this.compiler.CurrentNode?.AddStep(finishClause);
-            if (expression != null)
+            if (expression != null || !string.IsNullOrEmpty(onceVariableName))
             {
                 this.compiler.CurrentNode?.AddStep(new Label { label = endOfClauseLabel });
             }
@@ -346,7 +345,7 @@ namespace ThreadBare
                     if (condition is LineOnceConditionContext lineOnceConditionContext)
                     {
                         conditionCount += 1;
-                        onceVariableName = this.compiler.RegisterOnceVariable();
+                        onceVariableName = this.compiler.RegisterOnceVariable(this.compiler.CurrentNode?.Name ?? "", "linegroup");
                         optionStep.onceLabel = onceVariableName;
                         onceLabels[labels.Count - 1] = onceVariableName;
                         conditionExpressionContext = lineOnceConditionContext.expression();
@@ -471,7 +470,7 @@ namespace ThreadBare
 
                     if (condition is LineOnceConditionContext lineOnceConditionContext)
                     {
-                        onceVariableName = this.compiler.RegisterOnceVariable();
+                        onceVariableName = this.compiler.RegisterOnceVariable(this.compiler.CurrentNode?.Name ?? "", "option");
                         optionStep.onceLabel = onceVariableName;
                         onceLabels[labels.Count - 1] = onceVariableName;
                         conditionExpressionContext = lineOnceConditionContext.expression();

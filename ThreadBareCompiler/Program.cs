@@ -87,6 +87,9 @@ namespace ThreadBare
                 File.WriteAllText(Path.Combine(cppDir.FullName, ysFileName + ".cpp"), compiledCpp);
             }
 
+            var utilityCpp = compiler.CompileUtilityCpp();
+            File.WriteAllText(Path.Combine(cppDir.FullName, "_utility.cpp"), utilityCpp);
+
             // Attempt to compile node groups in their respective files, but need to write them in a new file if the source nodes are defined in different files
             var compiledHeader = compiler.CompileScriptHeader();
             File.WriteAllText(Path.Combine(hDir.FullName, "script.yarn.h"), compiledHeader);

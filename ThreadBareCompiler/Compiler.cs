@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using Yarn.Compiler;
 using static Yarn.Compiler.YarnSpinnerParser;
@@ -51,9 +52,11 @@ namespace ThreadBare
 
             return null;
         }
-        internal string RegisterOnceVariable()
+        internal string RegisterOnceVariable(string nodeName, string onceType)
         {
-            var newName = $"once{OnceVariables.Count}";
+            var prefix = $"once_{nodeName}_{onceType}_";
+            var onceCount = OnceVariables.Count(v => v.StartsWith(prefix));
+            var newName = $"{prefix}{onceCount}";
             OnceVariables.Add(newName);
             return newName;
         }
@@ -158,11 +161,52 @@ namespace ThreadBare
             {
                 sb.AppendLine(e.Compile());
             }
+            sb.AppendLine("\n\tusing TBNode = void (*)(TBScriptRunner&, NodeState&);");
+            sb.AppendLine("\tTBNode nodeToTBNode(Node node);");
+            sb.AppendLine("\tbn::string_view nodeToName(Node node);");
 
             sb.Append("""
                 }
                 #endif
                 """);
+            return sb.ToString();
+        }
+        public string CompileUtilityCpp()
+        {
+            var sb = new StringBuilder();
+        
+            sb.AppendLine($"""#include "threadbare.h" """);
+            //sb.AppendLine("#include <bn_math.h>");
+            //sb.AppendLine("#include <bn_fixed.h>");
+            sb.AppendLine($"namespace {ScriptNamespace} {{");
+
+
+
+            sb.AppendLine("\tTBNode nodeToTBNode(Node node) {");
+            sb.AppendLine("\t\tswitch(node){");
+            foreach (var nodeName in NodeNames) { 
+                sb.AppendLine($"\t\t\tcase Node::{nodeName}: return &{nodeName}; break;");
+            }
+            sb.AppendLine($"\t\t\tdefault: return nullptr;");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine("return nullptr;");
+            sb.AppendLine("\t}");
+
+
+            sb.AppendLine("\tbn::string_view nodeToName(Node node) {");
+            sb.AppendLine("\t\tswitch(node){");
+            foreach (var nodeName in NodeNames)
+            {
+                sb.AppendLine($"\t\t\tcase Node::{nodeName}: return bn::string_view(\"{nodeName}\"); break;");
+            }
+            sb.AppendLine($"\t\t\tdefault: return bn::string_view(\"UNKNOWN NODE NAME\");");
+            sb.AppendLine("\t\t}");
+            sb.AppendLine("return bn::string_view(\"UNKNOWN NODE NAME\");");
+            sb.AppendLine("\t}");
+
+
+
+            sb.AppendLine("}");
             return sb.ToString();
         }
 
@@ -462,9 +506,11 @@ namespace ThreadBare
                 else if (expression is Markup markup)
                 {
                     hasMarkup = true;
-                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{(markup.isStart ? "" : "_")}{markup.name});");
+                    var outputMarkupName = $"{(markup.isStart ? "" : "_")}{markup.name}";
+                    sb.AppendLine($"\t\t\tmarkup.attributes.emplace_back(Attribute::{outputMarkupName});");
                     sb.AppendLine($"\t\t\tmarkup.attributePositions.emplace_back(currentLine.length());");
-
+                    sb.AppendLine($"\t\t\thandleLineAttributeOnWrite(Attribute::{outputMarkupName}, markup.attributeParams, currentLine, \"\");");
+                    
                     for (int i = 0; i < markup.parameters.Count; i++)
                     {
                         var p = markup.parameters[i];
@@ -882,7 +928,28 @@ namespace ThreadBare
                 sb.AppendLine($"\t\tcase {waitContinueLabel}:\n");
                 return sb.ToString();
             }
-            // TODO: Should probably put registered functions somewhere other than runner.variables
+            string enumPattern = @"^([a-zA-Z][\w]*)\.([a-zA-Z][\w]*)$";
+            var enumRegEx = new Regex(enumPattern);
+
+            // Todo: gotta be a better way to replace enums
+            args = args.Select(arg =>
+            {
+                var match = enumRegEx.Match(arg);
+                
+                if (match.Success )
+                {
+                    string enumName = match.Groups[1].Value ?? "";
+                    string enumCase = match.Groups[2].Value ?? "";
+                    var e = node.compiler.Enums.Find(e => e.Name == enumName);
+                    if (e != null && e.Cases.Any(c=>c.Name == enumCase))
+                    {
+                        return $"{enumName}::{enumCase}";
+                    }
+                }
+                return arg;
+                
+            }).ToList();
+            
             var result = $"\t\trunner.functions.{commandName}({string.Join(", ", args)});\n\n";
             return result;
         }
