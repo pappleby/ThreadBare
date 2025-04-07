@@ -13,15 +13,16 @@ namespace ThreadBare {
 	constexpr static int MAX_ATTRIBUTE_PARAMS_COUNT = 0;
 	constexpr static int VISITED_NODE_COUNT = 8;
 	constexpr static int VISIT_COUNT_NODE_COUNT = 1;
-	constexpr static int ONCE_VARIABLE_COUNT = 1;
+	constexpr static int ONCE_VARIABLE_COUNT = 8;
 
 	// nodes names
-	enum class Node : int {  };
+	enum class Node : int { DemoStart, DemoMenu, Explanations, DemoDemo, bgtestAutoRun, bgtestAutoRunSally, bgtestAutoRunTrackInterview, bgtestManualRun, demo2test };
 
 	// nodes:
 	enum class NodeTag : int { };
 	enum class VisitedNodeName : int { };
 	enum class VisitCountedNodeName : int {  };
+	enum class OnceKey : int { once0 };
 
 	// tags:
 	enum class LineTag : int { test, valuetest, doesitwork, hmmm };
@@ -38,5 +39,9 @@ namespace ThreadBare {
 	void bgtestAutoRunTrackInterview(TBScriptRunner& runner, NodeState& nodeState);
 	void bgtestManualRun(TBScriptRunner& runner, NodeState& nodeState);
 	void demo2test(TBScriptRunner& runner, NodeState& nodeState);
+
+	using TBNode = void (*)(TBScriptRunner&, NodeState&);
+	TBNode nodeToTBNode(Node node);
+
 }
 #endif

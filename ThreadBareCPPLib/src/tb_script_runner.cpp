@@ -26,19 +26,19 @@ void TBScriptRunner::EndNode() {
     }
 }
 
-void TBScriptRunner::SafeJump(void (*node)(TBScriptRunner&, NodeState&)) {
+void TBScriptRunner::SafeJump(TBNode node) {
     this->nodeStates.pop_back();
     this->nodeStates.emplace_back(NodeState(node));
     this->state = Working; 
 }
 
-void TBScriptRunner::Jump(void (*node)(TBScriptRunner&, NodeState&)) {
+void TBScriptRunner::Jump(TBNode node) {
     this->nodeStates.clear();
     this->nodeStates.emplace_back(NodeState(node));
     this->state = Working; 
 }
 
-void TBScriptRunner::Detour(void (*node)(TBScriptRunner&, NodeState&)) {
+void TBScriptRunner::Detour(TBNode node) {
     this->nodeStates.emplace_back(NodeState(node));
     this->state = Working; 
 }
@@ -52,6 +52,9 @@ void TBScriptRunner::StartTimer(bn::fixed seconds, int toNextStep) {
     if(toNextStep != 0){
         this->nodeStates.back().nextStep = toNextStep;
     }
+}
+void TBScriptRunner::RunScript(Node node) {
+    this->Jump(nodeToTBNode(node));
 };
 TBState TBScriptRunner::Execute() {
     bnrandom.update(); 
@@ -106,7 +109,7 @@ void TBScriptRunner::SetOnce(OnceKey key) {
 };
 
 int TBScriptRunner::VisitedCountNode(VisitCountedNodeName key) {
-    return this->visitCountNodes[(int) key];
+    return this->storage.visitCountNodes[(int) key];
 };
 
 void TBScriptRunner::SetVisitedState(VisitedNodeName key) {
@@ -114,7 +117,7 @@ void TBScriptRunner::SetVisitedState(VisitedNodeName key) {
 };
 
 void TBScriptRunner::IncrementVisitCount(VisitCountedNodeName key) {
-    this->visitCountNodes[(int) key] += 1;
+    this->storage.visitCountNodes[(int) key] += 1;
 };
 
 

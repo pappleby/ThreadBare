@@ -100,6 +100,8 @@ class NodeState {
 };
 
 class TBScriptRunner {
+    private:
+         uint8_t onceStorage[ONCE_VARIABLE_COUNT/8];
     public:
         TBState state = TBState::Off;
         int waitTimer = 0;
@@ -107,7 +109,7 @@ class TBScriptRunner {
         bn::vector<Option<OPTION_BUFFER_SIZE>, MAX_OPTIONS_COUNT> options;
         TBVariables variables;
         bn::vector<NodeState, 4> nodeStates;
-        bn::bitset<VISITED_NODE_COUNT> visitedNodes;
+        bn::bitset_ref visitedNodes;
         bn::array<int, VISIT_COUNT_NODE_COUNT> visitCountNodes;
         void Jump(void (*node)(TBScriptRunner&, NodeState&));
         void Detour(void (*node)(TBScriptRunner&, NodeState&));

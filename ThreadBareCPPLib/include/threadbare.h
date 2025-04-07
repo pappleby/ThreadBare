@@ -5,7 +5,6 @@
 #include <bn_sstream.h>
 #include <bn_vector.h>
 #include <bn_bitset.h>
-#include "script.yarn.h"
 #include "tb_variables.h"
 
 namespace ThreadBare {
@@ -101,9 +100,21 @@ class NodeState {
             this->nodeFn(runner, *this);
         }
 };
+class TBScriptStorage {
+    u_int8_t onceStorage[ONCE_VARIABLE_COUNT / 8] = {0};
+    u_int8_t visitedStorage[VISITED_NODE_COUNT / 8] = {0};
+    bn::array<int, VISIT_COUNT_NODE_COUNT> visitCountNodes = {0};
+    friend class TBScriptRunner;
+};
 
 class TBScriptRunner {
     public:
+        TBScriptStorage storage;
+        bn::bitset_ref visitedNodes;
+        bn::bitset_ref onceTest;
+        void SafeJump(TBNode node);
+        void Jump(TBNode node);
+        void Detour(TBNode node);
         TBState state = TBState::Off;
         int waitTimer = 0;
         TextBuffer<LINE_BUFFER_SIZE> currentLine;
@@ -111,14 +122,10 @@ class TBScriptRunner {
         TBFunctions functions;
         TBVariables variables;
         bn::vector<NodeState, 4> nodeStates;
-        bn::bitset<VISITED_NODE_COUNT> visitedNodes;
-        bn::bitset<ONCE_VARIABLE_COUNT> onceTest;
-        bn::array<int, VISIT_COUNT_NODE_COUNT> visitCountNodes;
-        void SafeJump(void (*node)(TBScriptRunner&, NodeState&));
-        void Jump(void (*node)(TBScriptRunner&, NodeState&));
-        void Detour(void (*node)(TBScriptRunner&, NodeState&));
+        TBScriptRunner() : storage(), visitedNodes(storage.visitedStorage), onceTest(storage.onceStorage) {};
         void StartTimer(int seconds, int toNextStep = 0 );
         void StartTimer(bn::fixed seconds, int toNextStep = 0);
+        void RunScript(Node node);
         void EndNode();
         void Stop();
         void FinishLine(int toNextStep);
@@ -132,7 +139,9 @@ class TBScriptRunner {
         bool Once(OnceKey key);
         void SetOnce(OnceKey key);
         void IncrementVisitCount(VisitCountedNodeName key);
+
         TBState Execute();
+        
 };
 
 
